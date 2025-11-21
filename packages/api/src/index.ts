@@ -78,6 +78,15 @@ app.get("/api/builders/:id/history", async (req: Request, res: Response) => {
   await handleGetBuilderHistory(req, res);
 });
 
+// Static frontend (built Vite app from packages/web/dist)
+const staticRoot = path.resolve(__dirname, "../../../packages/web/dist");
+
+app.use(express.static(staticRoot));
+
+app.get("/", async (_req: Request, res: Response) => {
+  res.sendFile(path.join(staticRoot, "index.html"));
+});
+
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   console.error("[VER] Unhandled error", err);
   res.status(500).json({ status: "error", message: "Internal server error" });

@@ -1,0 +1,21 @@
+version: "3.9"
+
+services:
+  ver:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      NODE_ENV: production
+      VER_PORT: 4000
+      VER_DB_HOST: ${VER_DB_HOST}
+      VER_DB_PORT: ${VER_DB_PORT:-3306}
+      VER_DB_USER: ${VER_DB_USER}
+      VER_DB_PASSWORD: ${VER_DB_PASSWORD}
+      VER_DB_NAME: ${VER_DB_NAME}
+      VER_API_KEY: ${VER_API_KEY}
+      # Optional: override default CORS origins if needed
+      # VER_CORS_ORIGINS: ${VER_CORS_ORIGINS:-https://eclesiar.com,https://www.eclesiar.com,https://ver.rpaby.pw}
+    ports:
+      - "4000:4000"
+    restart: unless-stopped
