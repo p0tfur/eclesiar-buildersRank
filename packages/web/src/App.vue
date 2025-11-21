@@ -14,6 +14,7 @@
           <div class="field-group">
             <label for="building">Budowa</label>
             <select id="building" v-model.number="selectedBuildingId">
+              <option :value="0">Wszystkie budowy</option>
               <option v-for="b in buildings" :key="b.id" :value="b.id">
                 {{ b.region }} – {{ b.type }} (LVL {{ b.level }})
               </option>
@@ -38,10 +39,6 @@
             </select>
           </div>
         </form>
-
-        <p v-if="mode === 'snapshot'" class="mode-note">
-          Widok snapshotów będzie rozbudowany w kolejnych krokach. Aktualnie najlepiej korzystać z trybu agregowanego.
-        </p>
       </section>
 
       <section class="results">
@@ -50,7 +47,7 @@
         </p>
 
         <template v-else>
-          <!-- Widok agregowany -->
+          <!-- Aggregated view -->
           <template v-if="mode === 'aggregate'">
             <template v-if="!isLoading && aggregateItems.length === 0">
               <p>Brak danych do wyświetlenia dla wybranych filtrów.</p>
@@ -95,7 +92,12 @@
                   <tr v-for="(row, index) in aggregateItems" :key="row.builderId ?? index">
                     <td>{{ index + 1 }}</td>
                     <td>
-                      <button type="button" class="link-button" @click="onShowHistory(row)">
+                      <button
+                        type="button"
+                        class="link-button"
+                        :disabled="!selectedBuildingId"
+                        @click="onShowHistory(row)"
+                      >
                         {{ row.name }}
                       </button>
                     </td>
@@ -108,7 +110,7 @@
             </template>
           </template>
 
-          <!-- Widok snapshotów -->
+          <!-- Snapshots view -->
           <template v-else>
             <p v-if="!isLoading && snapshots.length === 0">Brak snapshotów dla wybranego zakresu dat.</p>
 
@@ -160,10 +162,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from "vue";
 import { getBuildings, getRankings, getBuilderHistory } from "./api/api.js";
-// Docelowa logika (pobieranie danych z API VER, filtry, tabelki) zostanie dodana w kolejnych krokach.
 
 const buildings = ref<any[]>([]);
-const selectedBuildingId = ref<number | null>(null);
+const selectedBuildingId = ref<number | null>(0);
 const dateFrom = ref<string>("");
 const dateTo = ref<string>("");
 const mode = ref<"aggregate" | "snapshot">("aggregate");
@@ -179,7 +180,7 @@ const builderHistory = ref<{ builderId: number | null; name: string; items: any[
   items: [],
 });
 
-const canLoad = computed(() => !!selectedBuildingId.value && !!dateFrom.value && !!dateTo.value);
+const canLoad = computed(() => !!dateFrom.value && !!dateTo.value);
 
 function initDefaultDates() {
   const to = new Date();
@@ -202,7 +203,7 @@ async function loadBuildings() {
   }
 }
 
-// automatyczne przeładowanie danych przy zmianie filtrów
+// automatic data reload on filter change
 watch([selectedBuildingId, dateFrom, dateTo, mode], () => {
   if (canLoad.value) {
     loadRankings();
@@ -210,7 +211,11 @@ watch([selectedBuildingId, dateFrom, dateTo, mode], () => {
 });
 
 async function loadRankings() {
-  if (!canLoad.value || !selectedBuildingId.value) {
+  if (!canLoad.value) {
+    return;
+  }
+  if (mode.value === "snapshot" && !selectedBuildingId.value) {
+    // snapshots view requires a specific building
     return;
   }
   isLoading.value = true;
@@ -221,7 +226,6 @@ async function loadRankings() {
 
   try {
     const params: Record<string, unknown> = {
-      buildingId: selectedBuildingId.value,
       mode: mode.value,
     };
 
@@ -230,6 +234,16 @@ async function loadRankings() {
     }
     if (dateTo.value) {
       params.to = new Date(dateTo.value).toISOString();
+    }
+
+    if (mode.value === "snapshot") {
+      // snapshots view requires a specific building
+      params.buildingId = selectedBuildingId.value;
+    } else if (mode.value === "aggregate") {
+      // in aggregated view buildingId is optional (0 = all buildings)
+      if (selectedBuildingId.value) {
+        params.buildingId = selectedBuildingId.value;
+      }
     }
 
     const result = await getRankings(params);
@@ -273,7 +287,7 @@ async function onShowHistory(row: any) {
   try {
     errorMessage.value = null;
 
-    // Ustawiamy od razu kontekst gracza, żeby sekcja historii pojawiła się po kliknięciu.
+    // Set builder history context right away so the history section appears on click.
     builderHistory.value = {
       builderId: row.builderId,
       name: row.name,
@@ -315,6 +329,7 @@ onMounted(() => {
   background-color: #0f172a;
   color: #e5e7eb;
   padding: 1.5rem;
+  margin: 0;
 }
 
 .app-header {
@@ -389,6 +404,8 @@ onMounted(() => {
 .field-group button:disabled {
   opacity: 0.6;
   cursor: default;
+  color: #fff;
+  background-color: #020617;
 }
 
 .results-table {

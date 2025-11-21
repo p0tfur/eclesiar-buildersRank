@@ -269,10 +269,7 @@ export async function handleGetRankings(req: Request, res: Response): Promise<vo
   const toRaw = req.query.to as string | undefined;
 
   const buildingId = parseInt(String(buildingIdRaw ?? "0"), 10) || 0;
-  if (!buildingId) {
-    res.status(400).json({ status: "error", message: "buildingId is required" });
-    return;
-  }
+  const hasBuildingFilter = !!buildingId;
 
   const mode = String(modeRaw || "aggregate");
 
@@ -300,6 +297,11 @@ export async function handleGetRankings(req: Request, res: Response): Promise<vo
     const pool = getPool();
 
     if (mode === "snapshot") {
+      if (!hasBuildingFilter) {
+        res.status(400).json({ status: "error", message: "buildingId is required for snapshot mode" });
+        return;
+      }
+
       const [rows] = await pool.execute<RowDataPacket[]>(
         "SELECT s.id AS snapshotId, s.captured_at AS capturedAt, b.name, e.rank_position AS rank, e.points FROM ranking_snapshots s JOIN ranking_entries e ON e.snapshot_id = s.id JOIN builders b ON b.id = e.builder_id WHERE s.building_id = ? AND s.captured_at BETWEEN ? AND ? ORDER BY s.captured_at DESC, e.rank_position ASC",
         [buildingId, from, to]
@@ -329,12 +331,51 @@ export async function handleGetRankings(req: Request, res: Response): Promise<vo
       return;
     }
 
-    const [rows] = await pool.execute<RowDataPacket[]>(
-      "SELECT b.id AS builderId, b.name, SUM(e.points) AS totalPoints, AVG(e.rank_position) AS averageRank, COUNT(*) AS entriesCount FROM ranking_entries e JOIN ranking_snapshots s ON s.id = e.snapshot_id JOIN builders b ON b.id = e.builder_id WHERE s.building_id = ? AND s.captured_at BETWEEN ? AND ? GROUP BY b.id, b.name ORDER BY totalPoints DESC",
-      [buildingId, from, to]
+    // agregated
+    if (hasBuildingFilter) {
+      // latest snapshot for specific building in the given range
+      const [latestRows] = await pool.execute<RowDataPacket[]>(
+        "SELECT id, captured_at AS capturedAt FROM ranking_snapshots WHERE building_id = ? AND captured_at BETWEEN ? AND ? ORDER BY captured_at DESC LIMIT 1",
+        [buildingId, from, to]
+      );
+
+      if (latestRows.length === 0) {
+        res.json({ buildingId, from, to, items: [] });
+        return;
+      }
+
+      const latestSnapshotId = Number(latestRows[0].id);
+      const latestCapturedAt = latestRows[0].capturedAt as Date;
+
+      const [rows] = await pool.execute<RowDataPacket[]>(
+        "SELECT b.id AS builderId, b.name, e.points AS totalPoints, e.rank_position AS averageRank, 1 AS entriesCount FROM ranking_entries e JOIN builders b ON b.id = e.builder_id WHERE e.snapshot_id = ? ORDER BY totalPoints DESC",
+        [latestSnapshotId]
+      );
+
+      res.json({ buildingId, from, to, latestSnapshotId, latestCapturedAt, items: rows });
+      return;
+    }
+
+    // all buildings: one latest snapshot per building
+    const [latestSnapshots] = await pool.execute<RowDataPacket[]>(
+      "SELECT s.id AS snapshotId, s.building_id AS buildingId, s.captured_at AS capturedAt FROM ranking_snapshots s JOIN (SELECT building_id, MAX(captured_at) AS maxCapturedAt FROM ranking_snapshots WHERE captured_at BETWEEN ? AND ? GROUP BY building_id) t ON t.building_id = s.building_id AND t.maxCapturedAt = s.captured_at",
+      [from, to]
     );
 
-    res.json({ buildingId, from, to, items: rows });
+    if (latestSnapshots.length === 0) {
+      res.json({ buildingId: null, from, to, items: [] });
+      return;
+    }
+
+    const snapshotIds = latestSnapshots.map((row) => Number(row.snapshotId));
+    const placeholders = snapshotIds.map(() => "?").join(",");
+
+    const [rows] = await pool.execute<RowDataPacket[]>(
+      `SELECT b.id AS builderId, b.name, SUM(e.points) AS totalPoints, AVG(e.rank_position) AS averageRank, COUNT(*) AS entriesCount FROM ranking_entries e JOIN builders b ON b.id = e.builder_id WHERE e.snapshot_id IN (${placeholders}) GROUP BY b.id, b.name ORDER BY totalPoints DESC`,
+      snapshotIds
+    );
+
+    res.json({ buildingId: null, from, to, items: rows });
   } catch (err) {
     res.status(500).json({ status: "error", message: "Failed to load rankings" });
   }
