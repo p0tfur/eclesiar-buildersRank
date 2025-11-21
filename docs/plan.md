@@ -193,12 +193,14 @@
 
    - **Query params**:
 
-     - `buildingId` (obowiązkowy na początek – można rozszerzyć później).
+     - `buildingId` (opcjonalny w trybie agregowanym, **wymagany** w trybie snapshotowym).
      - `from` (ISO date/datetime, opcjonalne – domyślnie np. ostatnie 7 dni).
      - `to` (ISO date/datetime, opcjonalne – domyślnie teraz).
      - `mode` (opcjonalne):
        - `"snapshot"` – zwróć listę snapshotów z osobnymi rankingami.
-       - `"aggregate"` – zagreguj po graczu dla całego okresu (domyślne).
+       - `"aggregate"` – **aktualnie**:
+         - jeśli podany `buildingId` → używany jest **najnowszy snapshot** w zadanym zakresie dat dla tej budowy,
+         - jeśli `buildingId` pominięty → dla **każdej budowy** wybierany jest jej najnowszy snapshot w zakresie, a punkty gracza są sumą punktów z tych najnowszych snapshotów (stan "na dzisiaj" dla wszystkich budów).
 
    - **Odpowiedź dla `mode=aggregate` (propozycja)**:
 
@@ -241,7 +243,17 @@
      }
      ```
 
-4. (opcjonalnie na później) **`GET /api/builders/:id/history`** – historia gracza.
+4. **`GET /api/builders/:id/history`** – historia gracza.
+
+   - **Status**: zaimplementowany.
+   - **Parametry**:
+     - `:id` – identyfikator gracza (`builderId`).
+     - `buildingId` (query, opcjonalny) – identyfikator budowy; jeśli pominięty, historia obejmuje wszystkie budowy.
+     - `from`, `to` (query, opcjonalne) – zakres dat, działa jak w `GET /api/rankings`.
+   - **Zachowanie**:
+     - zwraca listę wpisów posortowanych rosnąco po czasie (`points`, `rank`, `capturedAt`),
+     - każdy wpis zawiera również informacje o budowie (`buildingId`, `buildingRegion`, `buildingType`, `buildingLevel`), co pozwala wyświetlić historię udziału gracza we wszystkich budowach,
+     - używane we froncie do rysowania tabeli historii po kliknięciu w gracza.
 
 ### 5.3. Bezpieczeństwo i CORS
 
@@ -250,7 +262,9 @@
   - zezwolić na origin `https://eclesiar.com` oraz `https://www.eclesiar.com` (i ewentualne subdomeny potrzebne dla gry).
   - przyjmować `Content-Type: application/json`.
 - Autoryzacja:
-  - Minimalnie na start: **brak** auth, ale zabezpieczony origin + ewentualny prosty klucz w nagłówku (np. `X-API-Key`) ustawiony w userscripcie (do przemyślenia z Tobą).
+  - Zaimplementowano prosty mechanizm API key oparty o nagłówek `X-VER-API-KEY`.
+  - Klucze są konfigurowane w `.env` w zmiennej `VER_API_KEY` jako lista rozdzielana przecinkami (multi-key support).
+  - Endpoint `POST /api/rankings/snapshots` wymaga poprawnego klucza; pozostałe endpointy są publiczne.
 
 ## 6. Frontend (`packages/web`) – projekt
 
@@ -288,11 +302,14 @@
 
 ### 6.3. Logika (Composition API)
 
-- Reactive state:
-  - `selectedBuildingId`, `dateFrom`, `dateTo`, `mode`, `isLoading`, `error`, `rankingsData`.
+- Reactive state (stan faktyczny):
+  - `buildings`, `selectedBuildingId` (0 = wszystkie budowy), `dateFrom`, `dateTo`, `mode` (`aggregate` / `snapshot`),
+  - `aggregateItems`, `snapshots`, `selectedSnapshotId`,
+  - `builderHistory` (aktualnie wybrany gracz + lista wpisów historii),
+  - `isLoading`, `errorMessage`.
 - Efekty uboczne:
-  - Funkcja `loadBuildings()` na mount.
-  - Funkcja `loadRankings()` wywoływana po zmianie filtrów / kliknięciu `Odśwież`.
+  - `loadBuildings()` na `onMounted` (ładuje listę budów),
+  - `loadRankings()` wywoływane **automatycznie** przez `watch` przy każdej zmianie filtrów (`selectedBuildingId`, `dateFrom`, `dateTo`, `mode`).
 - Obsługa błędów:
   - Wyświetlanie komunikatu o błędzie nad tabelą.
   - Logowanie błędów w konsoli.
@@ -370,27 +387,43 @@
   - zaimplementowany mechanizm deduplikacji snapshotów (24h + `payload_hash`).
 - **Frontend (VER web)**:
   - widok główny zawiera:
-    - wybór budowy,
+    - wybór budowy z opcją `Wszystkie budowy` (0) – w tym trybie agregacja sumuje punkty z najnowszych snapshotów wszystkich budów,
     - wybór zakresu dat,
     - wybór trybu (`aggregate` / `snapshot`),
     - tabelę wyników w trybie agregowanym (`totalPoints`, `averageRank`, `entriesCount`),
-    - widok snapshotów: listę snapshotów w zadanym okresie oraz tabelę wpisów dla wybranego snapshotu.
+    - widok snapshotów: listę snapshotów w zadanym okresie oraz tabelę wpisów dla wybranego snapshotu,
+    - sekcję **historii gracza** nad tabelą agregatu, pojawiającą się po kliknięciu w gracza (tylko dla konkretnej budowy).
   - komunikaty o błędach oraz stan ładowania sygnalizowane w UI.
+  - filtry (`Budowa`/`Od`/`Do`/`Tryb`) powodują automatyczne przeładowanie danych (brak ręcznego przycisku `Załaduj`).
 - **Userscript Eclesiar**:
   - istniejący przycisk `Export CSV` pozostaje bez zmian,
   - dodany przycisk **"Wyślij ranking do VER"**, który:
     - zapewnia widoczność rankingu,
     - zbiera donorów,
     - buduje payload zgodny z kontraktem API,
-    - wysyła `POST` do endpointu VER,
+    - wysyła `POST` do endpointu VER z nagłówkiem `X-VER-API-KEY` (wartość konfigurowalna w skrypcie),
     - raportuje sukces/błąd w `alert` + logi w konsoli.
 
 ### Możliwe rozszerzenia na przyszłość
 
 - Rozbudowa widoku **snapshotów** po stronie frontendu (np. oś czasu, porównywanie snapshotów).
-- Dodatkowy endpoint z historią wybranego gracza (`GET /api/builders/:id/history`).
 - Dodatkowe metryki (np. różnice punktów między kolejnymi snapshotami, udział procentowy w budowie).
-- Mechanizmy autoryzacji / prosty klucz API dla userscriptu.
+
+## 10. Rekomendowane następne kroki
+
+1. **Metryki zmian punktów**:
+   - obliczanie przyrostów między kolejnymi snapshotami dla gracza,
+   - pokazanie w historii różnicy względem poprzedniego wpisu.
+2. **Lepsze UX w historii gracza**:
+   - prosty wykres (np. liniowy) punktów w czasie,
+   - filtr po minimalnej liczbie snapshotów / po regionie.
+3. **Eksport/raporty**:
+   - eksport widoku agregowanego do CSV/JSON bezpośrednio z frontendu.
+4. **Hardening API**:
+   - rate limiting dla `POST /api/rankings/snapshots`,
+   - ewentualny log audytowy (kto i z jakiego klucza wysyła snapshoty).
+
+> Rozbudowa widoku **snapshotów** (oś czasu, porównania) pozostaje opcją na przyszłość, ale przy obecnym założeniu jednego snapshotu na budowę nie jest priorytetem.
 
 ---
 

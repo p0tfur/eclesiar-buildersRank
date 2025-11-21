@@ -63,6 +63,7 @@
                 <table v-else class="results-table">
                   <thead>
                     <tr>
+                      <th>Budowa</th>
                       <th>Data</th>
                       <th>Punkty</th>
                       <th>Pozycja</th>
@@ -70,6 +71,7 @@
                   </thead>
                   <tbody>
                     <tr v-for="(h, index) in builderHistory.items" :key="h.snapshotId ?? index">
+                      <td>{{ h.buildingRegion }} – {{ h.buildingType }} (LVL {{ h.buildingLevel }})</td>
                       <td>{{ formatSnapshotDate(h.capturedAt) }}</td>
                       <td>{{ h.points }}</td>
                       <td>{{ h.rank }}</td>
@@ -92,12 +94,7 @@
                   <tr v-for="(row, index) in aggregateItems" :key="row.builderId ?? index">
                     <td>{{ index + 1 }}</td>
                     <td>
-                      <button
-                        type="button"
-                        class="link-button"
-                        :disabled="!selectedBuildingId"
-                        @click="onShowHistory(row)"
-                      >
+                      <button type="button" class="link-button" @click="onShowHistory(row)">
                         {{ row.name }}
                       </button>
                     </td>
@@ -286,7 +283,7 @@ function formatSnapshotDate(value: string | Date): string {
 }
 
 async function onShowHistory(row: any) {
-  if (!row || !row.builderId || !selectedBuildingId.value) return;
+  if (!row || !row.builderId) return;
   try {
     errorMessage.value = null;
 
@@ -297,9 +294,11 @@ async function onShowHistory(row: any) {
       items: [],
     };
 
-    const params: Record<string, unknown> = {
-      buildingId: selectedBuildingId.value,
-    };
+    const params: Record<string, unknown> = {};
+
+    if (selectedBuildingId.value) {
+      params.buildingId = selectedBuildingId.value;
+    }
     if (dateFrom.value) {
       params.from = new Date(dateFrom.value).toISOString();
     }

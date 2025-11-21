@@ -388,10 +388,10 @@ export async function handleGetBuilderHistory(req: Request, res: Response): Prom
   const toRaw = req.query.to as string | undefined;
 
   const builderId = parseInt(String(builderIdRaw ?? "0"), 10) || 0;
-  const buildingId = parseInt(String(buildingIdRaw ?? "0"), 10) || 0;
+  const buildingId = buildingIdRaw ? parseInt(String(buildingIdRaw ?? "0"), 10) || 0 : 0;
 
-  if (!builderId || !buildingId) {
-    res.status(400).json({ status: "error", message: "builderId and buildingId are required" });
+  if (!builderId) {
+    res.status(400).json({ status: "error", message: "builderId is required" });
     return;
   }
 
@@ -429,15 +429,26 @@ export async function handleGetBuilderHistory(req: Request, res: Response): Prom
 
     const builder = builderRows[0];
 
-    const [rows] = await pool.execute<RowDataPacket[]>(
-      "SELECT s.id AS snapshotId, s.captured_at AS capturedAt, e.points, e.rank_position AS rank FROM ranking_entries e JOIN ranking_snapshots s ON s.id = e.snapshot_id WHERE e.builder_id = ? AND s.building_id = ? AND s.captured_at BETWEEN ? AND ? ORDER BY s.captured_at ASC",
-      [builderId, buildingId, from, to]
-    );
+    let rows: RowDataPacket[];
+
+    if (buildingId) {
+      // Historia dla konkretnej budowy
+      [rows] = await pool.execute<RowDataPacket[]>(
+        "SELECT s.id AS snapshotId, s.captured_at AS capturedAt, e.points, e.rank_position AS rank, b.id AS buildingId, b.region AS buildingRegion, b.building_type AS buildingType, b.level AS buildingLevel FROM ranking_entries e JOIN ranking_snapshots s ON s.id = e.snapshot_id JOIN buildings b ON b.id = s.building_id WHERE e.builder_id = ? AND s.building_id = ? AND s.captured_at BETWEEN ? AND ? ORDER BY s.captured_at ASC",
+        [builderId, buildingId, from, to]
+      );
+    } else {
+      // Historia we wszystkich budowach, w których gracz brał udział w danym okresie
+      [rows] = await pool.execute<RowDataPacket[]>(
+        "SELECT s.id AS snapshotId, s.captured_at AS capturedAt, e.points, e.rank_position AS rank, b.id AS buildingId, b.region AS buildingRegion, b.building_type AS buildingType, b.level AS buildingLevel FROM ranking_entries e JOIN ranking_snapshots s ON s.id = e.snapshot_id JOIN buildings b ON b.id = s.building_id WHERE e.builder_id = ? AND s.captured_at BETWEEN ? AND ? ORDER BY s.captured_at ASC, b.region ASC, b.building_type ASC, b.level ASC",
+        [builderId, from, to]
+      );
+    }
 
     res.json({
       builderId,
       builderName: builder.name,
-      buildingId,
+      buildingId: buildingId || null,
       from,
       to,
       points: rows,
