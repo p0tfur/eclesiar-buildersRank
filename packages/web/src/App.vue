@@ -1,16 +1,16 @@
 <template>
-  <div class="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-emerald-500/30">
+  <div class="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-orange-500/30">
     <!-- Top Navigation / Header -->
     <header class="sticky top-0 z-40 w-full backdrop-blur-lg bg-slate-950/80 border-b border-slate-800/60">
       <div class="container mx-auto px-4 h-16 flex items-center justify-between">
         <div class="flex items-center gap-3">
-          <div class="p-2 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
-            <ActivityIcon class="w-6 h-6 text-emerald-400" />
+          <div class="p-2 bg-orange-500/10 rounded-lg border border-orange-500/20">
+            <span class="text-xl">🦊</span>
           </div>
           <div>
-            <h1 class="font-bold text-lg tracking-tight text-white">
+            <h1 class="font-bold text-lg tracking-tight text-white flex items-center gap-2">
               VER <span class="text-slate-500 font-normal mx-1">|</span>
-              <span class="text-emerald-400">Verified Erection Report</span>
+              <span class="text-orange-400">Verified Erection Report</span>
             </h1>
             <p class="text-xs text-slate-400">Advanced Erection Analytics Dashboard</p>
           </div>
@@ -18,10 +18,10 @@
 
         <div class="flex items-center gap-4">
           <div
-            class="hidden md:flex items-center gap-2 text-xs font-mono text-slate-500 bg-slate-900/50 px-3 py-1.5 rounded-full border border-slate-800"
+            class="hidden md:flex items-center gap-2 text-xs font-mono text-orange-300/80 bg-orange-900/20 px-3 py-1.5 rounded-full border border-orange-500/20"
           >
-            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            SYSTEM ONLINE
+            <span class="w-2 h-2 rounded-full bg-orange-500 animate-pulse shadow-[0_0_8px_rgba(249,115,22,0.6)]"></span>
+            SENKO-SAN WATCHING
           </div>
         </div>
       </div>
@@ -29,8 +29,15 @@
 
     <main class="container mx-auto px-4 py-8 space-y-6">
       <!-- Control Panel -->
-      <section class="bg-slate-900/50 border border-slate-800 rounded-xl p-1 shadow-xl backdrop-blur-sm">
-        <div class="grid grid-cols-1 md:grid-cols-12 gap-2 p-2">
+      <section
+        class="bg-slate-900/50 border border-slate-800 rounded-xl p-1 shadow-xl backdrop-blur-sm relative overflow-hidden"
+      >
+        <!-- Fox tail decoration -->
+        <div
+          class="absolute -right-10 -top-10 w-32 h-32 bg-orange-500/5 rounded-full blur-3xl pointer-events-none"
+        ></div>
+
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-2 p-2 relative z-10">
           <!-- Building Select -->
           <div class="md:col-span-3 relative group">
             <label
@@ -39,11 +46,11 @@
             >
             <div class="relative">
               <BuildingIcon
-                class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-hover:text-emerald-400 transition-colors"
+                class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-hover:text-orange-400 transition-colors"
               />
               <select
                 v-model.number="selectedBuildingId"
-                class="w-full bg-slate-950 border border-slate-800 text-slate-300 text-sm rounded-lg pl-10 pr-4 py-2.5 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all outline-none appearance-none cursor-pointer hover:bg-slate-900"
+                class="w-full bg-slate-950 border border-slate-800 text-slate-300 text-sm rounded-lg pl-10 pr-4 py-2.5 focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 transition-all outline-none appearance-none cursor-pointer hover:bg-slate-900"
               >
                 <option :value="0">All Sites / Global View</option>
                 <option v-for="b in buildings" :key="b.id" :value="b.id">
@@ -65,12 +72,12 @@
               >
               <div class="relative">
                 <CalendarIcon
-                  class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-hover:text-emerald-400 transition-colors"
+                  class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-hover:text-orange-400 transition-colors"
                 />
                 <input
                   v-model="dateFrom"
                   type="date"
-                  class="w-full bg-slate-950 border border-slate-800 text-slate-300 text-sm rounded-lg pl-10 pr-2 py-2.5 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all outline-none hover:bg-slate-900 [color-scheme:dark]"
+                  class="w-full bg-slate-950 border border-slate-800 text-slate-300 text-sm rounded-lg pl-10 pr-2 py-2.5 focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 transition-all outline-none hover:bg-slate-900 [color-scheme:dark]"
                 />
               </div>
             </div>
@@ -81,12 +88,12 @@
               >
               <div class="relative">
                 <CalendarIcon
-                  class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-hover:text-emerald-400 transition-colors"
+                  class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-hover:text-orange-400 transition-colors"
                 />
                 <input
                   v-model="dateTo"
                   type="date"
-                  class="w-full bg-slate-950 border border-slate-800 text-slate-300 text-sm rounded-lg pl-10 pr-2 py-2.5 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all outline-none hover:bg-slate-900 [color-scheme:dark]"
+                  class="w-full bg-slate-950 border border-slate-800 text-slate-300 text-sm rounded-lg pl-10 pr-2 py-2.5 focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 transition-all outline-none hover:bg-slate-900 [color-scheme:dark]"
                 />
               </div>
             </div>
@@ -103,7 +110,9 @@
                 @click="mode = 'aggregate'"
                 class="flex-1 flex items-center justify-center gap-2 text-xs font-medium rounded-md transition-all"
                 :class="
-                  mode === 'aggregate' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'
+                  mode === 'aggregate'
+                    ? 'bg-slate-800 text-white shadow-sm ring-1 ring-orange-500/20'
+                    : 'text-slate-500 hover:text-slate-300'
                 "
               >
                 <BarChart3Icon class="w-3.5 h-3.5" />
@@ -113,7 +122,9 @@
                 @click="mode = 'snapshot'"
                 class="flex-1 flex items-center justify-center gap-2 text-xs font-medium rounded-md transition-all"
                 :class="
-                  mode === 'snapshot' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'
+                  mode === 'snapshot'
+                    ? 'bg-slate-800 text-white shadow-sm ring-1 ring-orange-500/20'
+                    : 'text-slate-500 hover:text-slate-300'
                 "
               >
                 <CameraIcon class="w-3.5 h-3.5" />
@@ -128,7 +139,7 @@
               type="button"
               :disabled="mode !== 'aggregate' || !aggregateItems.length"
               @click="exportAggregateCsv"
-              class="w-full h-[42px] flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-sm font-medium rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500 shadow-lg shadow-emerald-900/20"
+              class="w-full h-[42px] flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-400 active:bg-orange-600 text-slate-950 text-sm font-bold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500 shadow-lg shadow-orange-500/20"
             >
               <DownloadIcon class="w-4 h-4" />
               <span>Export CSV</span>
@@ -153,13 +164,15 @@
           v-if="builderHistory.builderId"
           class="relative overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/50 p-6 shadow-2xl backdrop-blur-xl transition-all animate-in fade-in zoom-in-95"
         >
-          <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 to-cyan-500"></div>
+          <div
+            class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-orange-400 via-yellow-400 to-red-400"
+          ></div>
 
           <div class="flex flex-col md:flex-row gap-6">
             <div class="md:w-1/3 space-y-4">
               <div class="flex items-center gap-3">
                 <div
-                  class="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center text-emerald-400 font-bold text-xl border border-slate-700"
+                  class="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center text-orange-400 font-bold text-xl border border-slate-700 shadow-[0_0_15px_rgba(251,146,60,0.2)]"
                 >
                   {{ builderHistory.name.charAt(0).toUpperCase() }}
                 </div>
@@ -173,13 +186,17 @@
 
               <!-- Mini Stats for Builder -->
               <div class="grid grid-cols-2 gap-3">
-                <div class="p-3 bg-slate-950/50 rounded-lg border border-slate-800">
-                  <div class="text-xs text-slate-500 uppercase">Data Points</div>
+                <div
+                  class="p-3 bg-slate-950/50 rounded-lg border border-slate-800 group hover:border-orange-500/30 transition-colors"
+                >
+                  <div class="text-xs text-slate-500 uppercase group-hover:text-orange-400/70">Data Points</div>
                   <div class="text-lg font-mono text-white">{{ builderHistory.items?.length || 0 }}</div>
                 </div>
-                <div class="p-3 bg-slate-950/50 rounded-lg border border-slate-800">
-                  <div class="text-xs text-slate-500 uppercase">Latest Rank</div>
-                  <div class="text-lg font-mono text-emerald-400">#{{ builderHistory.items?.[0]?.rank || "-" }}</div>
+                <div
+                  class="p-3 bg-slate-950/50 rounded-lg border border-slate-800 group hover:border-orange-500/30 transition-colors"
+                >
+                  <div class="text-xs text-slate-500 uppercase group-hover:text-orange-400/70">Latest Rank</div>
+                  <div class="text-lg font-mono text-orange-400">#{{ builderHistory.items?.[0]?.rank || "-" }}</div>
                 </div>
               </div>
             </div>
@@ -189,7 +206,7 @@
                 v-if="!builderHistory.items || !builderHistory.items.length"
                 class="absolute inset-0 flex items-center justify-center text-slate-500"
               >
-                No history data available for this period.
+                No history data available. Senko is sad... 😿
               </p>
               <Line v-else :data="chartData" :options="chartOptions" />
             </div>
@@ -202,7 +219,7 @@
         >
           <div class="p-4 border-b border-slate-800 flex items-center justify-between">
             <h3 class="font-bold text-slate-200 flex items-center gap-2">
-              <TrophyIcon class="w-5 h-5 text-yellow-500" />
+              <TrophyIcon class="w-5 h-5 text-yellow-400" />
               Leaderboard
             </h3>
             <div class="text-xs text-slate-500">Showing {{ aggregateItems.length }} builders</div>
@@ -210,7 +227,7 @@
 
           <div v-if="!isLoading && aggregateItems.length === 0" class="p-12 text-center text-slate-500">
             <GhostIcon class="w-12 h-12 mx-auto mb-3 opacity-20" />
-            <p>No data found for the selected criteria.</p>
+            <p>No data found. Have some fried tofu instead. 🍙</p>
           </div>
 
           <div v-else class="overflow-x-auto">
@@ -220,7 +237,7 @@
                   <th class="px-6 py-4">Rank</th>
                   <th class="px-6 py-4">Builder</th>
                   <th class="px-6 py-4 text-right">Total Points</th>
-                  <th class="px-6 py-4 text-right">Avg. Position</th>
+                  <th class="px-6 py-4 text-right">Position</th>
                   <th class="px-6 py-4 text-right">Entries</th>
                   <th class="px-6 py-4 text-center">Action</th>
                 </tr>
@@ -230,13 +247,13 @@
                   v-for="(row, index) in aggregateItems"
                   :key="row.builderId ?? index"
                   class="hover:bg-slate-800/30 transition-colors group"
-                  :class="{ 'bg-emerald-900/10': builderHistory.builderId === row.builderId }"
+                  :class="{ 'bg-orange-900/10': builderHistory.builderId === row.builderId }"
                 >
                   <td class="px-6 py-4 font-mono text-slate-500">#{{ index + 1 }}</td>
                   <td class="px-6 py-4">
                     <div class="flex items-center gap-3">
                       <div
-                        class="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-300 border border-slate-700 group-hover:border-emerald-500/50 group-hover:text-emerald-400 transition-colors"
+                        class="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-300 border border-slate-700 group-hover:border-orange-500/50 group-hover:text-orange-400 transition-colors"
                       >
                         {{ row.name?.charAt(0).toUpperCase() }}
                       </div>
@@ -245,7 +262,7 @@
                       }}</span>
                     </div>
                   </td>
-                  <td class="px-6 py-4 text-right font-mono text-emerald-400 font-medium">
+                  <td class="px-6 py-4 text-right font-mono text-orange-400 font-medium">
                     {{ row.totalPoints?.toLocaleString() }}
                   </td>
                   <td class="px-6 py-4 text-right font-mono text-slate-400">
@@ -257,7 +274,7 @@
                   <td class="px-6 py-4 text-center">
                     <button
                       @click="onShowHistory(row)"
-                      class="p-2 rounded-lg hover:bg-emerald-500/20 text-slate-400 hover:text-emerald-400 transition-colors"
+                      class="p-2 rounded-lg hover:bg-orange-500/20 text-slate-400 hover:text-orange-400 transition-colors"
                       title="View History"
                     >
                       <LineChartIcon class="w-4 h-4" />
@@ -290,7 +307,7 @@
                 class="w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center justify-between group transition-all"
                 :class="
                   s.snapshotId === selectedSnapshotId
-                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-sm'
+                    ? 'bg-orange-500/10 text-orange-400 border border-orange-500/20 shadow-sm'
                     : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
                 "
               >
@@ -338,7 +355,7 @@
                     >
                       <td class="px-6 py-3 font-mono text-slate-500 w-20">#{{ entry.rank }}</td>
                       <td class="px-6 py-3 font-medium text-slate-300">{{ entry.name }}</td>
-                      <td class="px-6 py-3 text-right font-mono text-emerald-400">
+                      <td class="px-6 py-3 text-right font-mono text-orange-400">
                         {{ entry.points?.toLocaleString() }}
                       </td>
                     </tr>
@@ -356,14 +373,14 @@
         <p class="text-slate-600 text-sm">
           &copy; 2025 VER - Verified Erection Report <br />
           <span class="text-xs text-slate-700 mt-2 inline-block">
-            Made with ❤️ by
+            Made with <span class="text-red-500">❤️</span> by
             <a
               href="https://github.com/p0tfur"
               target="_blank"
-              class="text-emerald-500/50 hover:text-emerald-500 transition-colors"
+              class="text-orange-500/50 hover:text-orange-500 transition-colors"
               >p0tfur</a
-            ></span
-          >
+            >
+          </span>
         </p>
       </div>
     </footer>
@@ -374,7 +391,7 @@
 import { ref, computed, onMounted, watch } from "vue";
 import { getBuildings, getRankings, getBuilderHistory } from "./api/api.js";
 import {
-  ActivityIcon,
+  FlameIcon,
   BuildingIcon,
   ChevronDownIcon,
   CalendarIcon,
@@ -448,11 +465,12 @@ const chartData = computed(() => {
     datasets: [
       {
         label: "Points",
-        backgroundColor: "rgba(16, 185, 129, 0.1)",
-        borderColor: "#10b981",
+        // Senko Orange Theme for Chart
+        backgroundColor: "rgba(251, 146, 60, 0.1)", // orange-400 with opacity
+        borderColor: "#fb923c", // orange-400
         pointBackgroundColor: "#020617",
-        pointBorderColor: "#10b981",
-        pointHoverBackgroundColor: "#10b981",
+        pointBorderColor: "#fb923c",
+        pointHoverBackgroundColor: "#fb923c",
         pointHoverBorderColor: "#fff",
         data: dataPoints,
         fill: true,
@@ -473,7 +491,7 @@ const chartOptions = {
       backgroundColor: "#0f172a",
       titleColor: "#94a3b8",
       bodyColor: "#e2e8f0",
-      borderColor: "#1e293b",
+      borderColor: "#fb923c", // orange border on tooltip
       borderWidth: 1,
       padding: 10,
       displayColors: false,
@@ -588,7 +606,7 @@ function formatSnapshotDate(value: string | Date): string {
 function exportAggregateCsv() {
   if (mode.value !== "aggregate" || !aggregateItems.value.length) return;
 
-  const header = ["Lp.", "BuilderId", "Name", "Total Points", "Avg Rank"];
+  const header = ["Lp.", "BuilderId", "Name", "Total Points", "Rank"];
   const separator = ";";
   const rows: string[] = [];
   rows.push(header.join(separator));
