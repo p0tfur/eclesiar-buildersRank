@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS ranking_snapshots (
   client_user_agent TEXT,
   page_url TEXT,
   payload_hash CHAR(64) NOT NULL,
+  api_key_used VARCHAR(191) DEFAULT NULL,
   PRIMARY KEY (id),
   KEY idx_snapshots_building_captured (building_id, captured_at),
   KEY idx_snapshots_payload_hash (payload_hash),

@@ -183,6 +183,9 @@ export async function handlePostSnapshot(req: Request, res: Response): Promise<v
     const donors = normaliseDonors(payload.donors);
     const payloadHash = computePayloadHash(building, donors);
 
+    const apiKeyUsedHeader = req.headers["x-ver-api-key"];
+    const apiKeyUsed = apiKeyUsedHeader ? String(apiKeyUsedHeader).trim() || null : null;
+
     const pool = getPool();
     conn = await pool.getConnection();
 
@@ -205,8 +208,8 @@ export async function handlePostSnapshot(req: Request, res: Response): Promise<v
       const pageUrl = payload.pageUrl || "";
 
       const [snapshotResult] = await conn.execute<ResultSetHeader>(
-        "INSERT INTO ranking_snapshots (building_id, captured_at, source, client_user_agent, page_url, payload_hash) VALUES (?, ?, ?, ?, ?, ?)",
-        [buildingId, capturedAt, source, clientUserAgent, pageUrl, payloadHash]
+        "INSERT INTO ranking_snapshots (building_id, captured_at, source, client_user_agent, page_url, payload_hash, api_key_used) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [buildingId, capturedAt, source, clientUserAgent, pageUrl, payloadHash, apiKeyUsed]
       );
 
       const snapshotId = Number(snapshotResult.insertId);
@@ -432,18 +435,29 @@ export async function handleGetBuilderHistory(req: Request, res: Response): Prom
     let rows: RowDataPacket[];
 
     if (buildingId) {
-      // Historia dla konkretnej budowy
+      // History for a specific building
       [rows] = await pool.execute<RowDataPacket[]>(
         "SELECT s.id AS snapshotId, s.captured_at AS capturedAt, e.points, e.rank_position AS rank, b.id AS buildingId, b.region AS buildingRegion, b.building_type AS buildingType, b.level AS buildingLevel FROM ranking_entries e JOIN ranking_snapshots s ON s.id = e.snapshot_id JOIN buildings b ON b.id = s.building_id WHERE e.builder_id = ? AND s.building_id = ? AND s.captured_at BETWEEN ? AND ? ORDER BY s.captured_at ASC",
         [builderId, buildingId, from, to]
       );
     } else {
-      // Historia we wszystkich budowach, w których gracz brał udział w danym okresie
+      // History for all buildings where the player participated in the given period
       [rows] = await pool.execute<RowDataPacket[]>(
         "SELECT s.id AS snapshotId, s.captured_at AS capturedAt, e.points, e.rank_position AS rank, b.id AS buildingId, b.region AS buildingRegion, b.building_type AS buildingType, b.level AS buildingLevel FROM ranking_entries e JOIN ranking_snapshots s ON s.id = e.snapshot_id JOIN buildings b ON b.id = s.building_id WHERE e.builder_id = ? AND s.captured_at BETWEEN ? AND ? ORDER BY s.captured_at ASC, b.region ASC, b.building_type ASC, b.level ASC",
         [builderId, from, to]
       );
     }
+
+    // Calculate points delta relative to the previous entry for the same building
+    const lastPointsByBuilding = new Map<number, number>();
+    const enrichedRows = rows.map((row) => {
+      const buildingIdForRow = Number(row.buildingId);
+      const currentPoints = Number(row.points);
+      const prevPoints = lastPointsByBuilding.get(buildingIdForRow);
+      const deltaPoints = prevPoints != null ? currentPoints - prevPoints : null;
+      lastPointsByBuilding.set(buildingIdForRow, currentPoints);
+      return { ...row, deltaPoints };
+    });
 
     res.json({
       builderId,
@@ -451,7 +465,7 @@ export async function handleGetBuilderHistory(req: Request, res: Response): Prom
       buildingId: buildingId || null,
       from,
       to,
-      points: rows,
+      points: enrichedRows,
     });
   } catch (err) {
     res.status(500).json({ status: "error", message: "Failed to load builder history" });

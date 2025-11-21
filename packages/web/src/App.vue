@@ -38,6 +38,16 @@
               <option value="snapshot">Snapshoty</option>
             </select>
           </div>
+
+          <div class="field-group field-group-button">
+            <button
+              type="button"
+              :disabled="mode !== 'aggregate' || !aggregateItems.length"
+              @click="exportAggregateCsv"
+            >
+              Eksportuj CSV
+            </button>
+          </div>
         </form>
       </section>
 
@@ -66,6 +76,7 @@
                       <th>Budowa</th>
                       <th>Data</th>
                       <th>Punkty</th>
+                      <th>Zmiana punktów</th>
                       <th>Pozycja</th>
                     </tr>
                   </thead>
@@ -74,6 +85,7 @@
                       <td>{{ h.buildingRegion }} – {{ h.buildingType }} (LVL {{ h.buildingLevel }})</td>
                       <td>{{ formatSnapshotDate(h.capturedAt) }}</td>
                       <td>{{ h.points }}</td>
+                      <td>{{ formatDeltaPoints(h.deltaPoints) }}</td>
                       <td>{{ h.rank }}</td>
                     </tr>
                   </tbody>
@@ -86,7 +98,7 @@
                     <th>Lp.</th>
                     <th>Gracz</th>
                     <th>Suma punktów</th>
-                    <th>Średnia pozycja</th>
+                    <th>Pozycja</th>
                     <th>Liczba wpisów</th>
                   </tr>
                 </thead>
@@ -280,6 +292,52 @@ function formatSnapshotDate(value: string | Date): string {
   const d = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(d.getTime())) return String(value);
   return d.toLocaleString();
+}
+
+function formatDeltaPoints(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "-";
+  const v = Number(value);
+  if (!Number.isFinite(v)) return String(value);
+  const prefix = v > 0 ? "+" : "";
+  return prefix + v.toString();
+}
+
+function exportAggregateCsv() {
+  if (mode.value !== "aggregate" || !aggregateItems.value.length) {
+    return;
+  }
+
+  const header = ["Lp.", "BuilderId", "Gracz", "Suma punktów", "Pozycja"];
+
+  const separator = ";";
+  const rows: string[] = [];
+  rows.push(header.join(separator));
+
+  aggregateItems.value.forEach((row: any, index: number) => {
+    const values = [index + 1, row.builderId ?? "", row.name ?? "", row.totalPoints ?? "", row.averageRank ?? ""].map(
+      (v) => {
+        const text = String(v ?? "");
+        const escaped = text.replace(/"/g, '""');
+        return `"${escaped}"`;
+      }
+    );
+    rows.push(values.join(separator));
+  });
+
+  const csvContent = rows.join("\r\n");
+  // Add BOM to ensure Excel correctly detects UTF-8 encoding (for Polish characters in headers)
+  const blob = new Blob(["\uFEFF", csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  const fromPart = dateFrom.value || "";
+  const toPart = dateTo.value || "";
+  a.href = url;
+  a.download = `ver-aggregate-${fromPart}-${toPart}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 async function onShowHistory(row: any) {

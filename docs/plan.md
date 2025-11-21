@@ -72,6 +72,7 @@
    - `client_user_agent` (TEXT)
    - `page_url` (TEXT)
    - `payload_hash` (CHAR(64) lub podobne) – do ewentualnej deduplikacji
+   - `api_key_used` (VARCHAR) – klucz API (`X-VER-API-KEY`), z którego przyszedł dany upload (dla audytu)
    - indeks po `(building_id, captured_at)`.
 
 4. **`ranking_entries`** – wiersze rankingu w danym snapshotcie.
