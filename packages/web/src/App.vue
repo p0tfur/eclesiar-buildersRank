@@ -156,6 +156,12 @@
         </template>
       </section>
     </main>
+    <footer class="app-footer">
+      <p>
+        © 2025 VER - Verified Erection Report | Made with ❤️ by
+        <a href="https://github.com/p0tfur" target="_blank">p0tfur</a>
+      </p>
+    </footer>
   </div>
 </template>
 
@@ -194,9 +200,6 @@ async function loadBuildings() {
     errorMessage.value = null;
     const result = await getBuildings();
     buildings.value = Array.isArray(result.items) ? result.items : [];
-    if (buildings.value.length > 0 && !selectedBuildingId.value) {
-      selectedBuildingId.value = buildings.value[0].id;
-    }
   } catch (err) {
     console.error("[VER] Failed to load buildings", err);
     errorMessage.value = "Nie udało się załadować listy budów.";
@@ -322,6 +325,13 @@ onMounted(() => {
 });
 </script>
 
+<style>
+body {
+  margin: 0;
+  background-color: #020617;
+}
+</style>
+
 <style scoped>
 .app-root {
   min-height: 100vh;
@@ -408,6 +418,21 @@ onMounted(() => {
   background-color: #020617;
 }
 
+.link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #38bdf8;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.link-button:disabled {
+  color: #6b7280;
+  cursor: default;
+  text-decoration: none;
+}
+
 .results-table {
   width: 100%;
   border-collapse: collapse;
@@ -433,5 +458,25 @@ onMounted(() => {
   margin-top: 0.75rem;
   font-size: 0.85rem;
   color: #9ca3af;
+}
+
+.app-footer {
+  margin-top: 1.5rem;
+  font-size: 0.8rem;
+  color: #6b7280;
+  text-align: center;
+}
+
+.app-footer p {
+  margin: 0;
+}
+
+.app-footer a {
+  color: #38bdf8;
+  text-decoration: underline;
+}
+
+.app-footer a:hover {
+  color: #e5e7eb;
 }
 </style>
