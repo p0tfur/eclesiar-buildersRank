@@ -234,12 +234,29 @@
             <table class="w-full text-left text-sm">
               <thead class="bg-slate-950/50 text-slate-400 font-medium uppercase text-xs tracking-wider">
                 <tr>
-                  <th class="px-6 py-4">Rank</th>
-                  <th class="px-6 py-4">Builder</th>
-                  <th class="px-6 py-4 text-right">Total Points</th>
-                  <th class="px-6 py-4 text-right">Position</th>
-                  <th class="px-6 py-4 text-right">Entries</th>
-                  <th class="px-6 py-4 text-center">Action</th>
+                  <th class="px-6 py-4" title="Pozycja na tej liście na podstawie Total Points (1 = najwyżej)">Rank</th>
+                  <th class="px-6 py-4" title="Nazwa gracza / budowniczego">Builder</th>
+                  <th
+                    class="px-6 py-4 text-right"
+                    title="Suma punktów ze wszystkich snapshotów uwzględnionych w tym widoku"
+                  >
+                    Total Points
+                  </th>
+                  <th
+                    class="px-6 py-4 text-right"
+                    title="Średnia pozycja w rankingu gry (rank_position) z snapshotów w wybranym okresie"
+                  >
+                    Avg. Position
+                  </th>
+                  <th
+                    class="px-6 py-4 text-right"
+                    title="Liczba snapshotów / wpisów użytych do wyliczenia statystyk dla gracza"
+                  >
+                    Entries
+                  </th>
+                  <th class="px-6 py-4 text-center" title="Pokaż szczegółową historię punktów dla tego gracza">
+                    Action
+                  </th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-800/50">
@@ -370,14 +387,14 @@
 
     <footer class="border-t border-slate-900 bg-slate-950 py-8 mt-auto">
       <div class="container mx-auto px-4 text-center">
-        <p class="text-slate-600 text-sm">
+        <p class="text-slate-400 text-sm">
           &copy; 2025 VER - Verified Erection Report ||
-          <span class="text-xs text-slate-700 mt-2 inline-block">
+          <span class="text-xs text-slate-400 mt-2 inline-block">
             Made with <span class="text-red-500">❤️</span> by
             <a
               href="https://github.com/p0tfur"
               target="_blank"
-              class="text-orange-500/50 hover:text-orange-500 transition-colors"
+              class="text-orange-500/80 hover:text-orange-500 transition-colors"
               >p0tfur</a
             >
           </span>
@@ -385,16 +402,23 @@
           <a
             href="https://24na7.info/eclesiar-scripts/"
             target="_blank"
-            class="text-orange-500/50 hover:text-orange-500 transition-colors"
+            class="text-orange-500/80 hover:text-orange-500 transition-colors"
             >Tampermonkey Scripts for Eclesiar</a
           >
           |
           <a
             href="https://handytoolbox-front.pages.dev/eclesiar/tools/eclesiar-dmg"
             target="_blank"
-            class="text-orange-500/50 hover:text-orange-500 transition-colors"
+            class="text-orange-500/80 hover:text-orange-500 transition-colors"
             >Damage Calculator for Eclesiar</a
           >
+          |
+          <a
+            href="https://lifedots.app/"
+            target="_blank"
+            class="text-orange-500/80 hover:text-orange-500 transition-colors"
+            >Visualize Your Life Timeline
+          </a>
         </p>
       </div>
     </footer>
