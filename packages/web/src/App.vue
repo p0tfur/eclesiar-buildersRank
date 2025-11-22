@@ -371,7 +371,7 @@
     <footer class="border-t border-slate-900 bg-slate-950 py-8 mt-auto">
       <div class="container mx-auto px-4 text-center">
         <p class="text-slate-600 text-sm">
-          &copy; 2025 VER - Verified Erection Report <br />
+          &copy; 2025 VER - Verified Erection Report ||
           <span class="text-xs text-slate-700 mt-2 inline-block">
             Made with <span class="text-red-500">❤️</span> by
             <a
@@ -381,6 +381,20 @@
               >p0tfur</a
             >
           </span>
+          <br />
+          <a
+            href="https://24na7.info/eclesiar-scripts/"
+            target="_blank"
+            class="text-orange-500/50 hover:text-orange-500 transition-colors"
+            >Tampermonkey Scripts for Eclesiar</a
+          >
+          |
+          <a
+            href="https://handytoolbox-front.pages.dev/eclesiar/tools/eclesiar-dmg"
+            target="_blank"
+            class="text-orange-500/50 hover:text-orange-500 transition-colors"
+            >Damage Calculator for Eclesiar</a
+          >
         </p>
       </div>
     </footer>
