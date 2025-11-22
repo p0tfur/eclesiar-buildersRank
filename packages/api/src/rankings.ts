@@ -30,6 +30,26 @@ interface NormalisedBuilding {
   level: number;
 }
 
+const BUILDING_TYPE_SYNONYMS: Record<string, string> = {
+  szpital: "Hospital",
+  hospital: "Hospital",
+  "strefa przemysłowa": "Industrial zone",
+  "industrial zone": "Industrial zone",
+  "pole produkcyjne": "Production fields",
+  "production fields": "Production fields",
+  "baza wojskowa": "Military base",
+  "military base": "Military base",
+};
+
+function normaliseBuildingType(rawType: string): string {
+  const normalizedKey = rawType.trim().toLowerCase();
+  const canonical = BUILDING_TYPE_SYNONYMS[normalizedKey];
+  if (canonical) {
+    return canonical;
+  }
+  return rawType.trim();
+}
+
 interface NormalisedDonor {
   rank: number;
   player: string;
@@ -41,7 +61,8 @@ function normaliseBuilding(raw?: SnapshotBuildingPayload): NormalisedBuilding {
     throw new Error("Missing building in payload");
   }
   const region = String(raw.region ?? "").trim();
-  const type = String(raw.type ?? "").trim();
+  const rawType = String(raw.type ?? "");
+  const type = normaliseBuildingType(rawType);
   const levelNum = parseInt(String(raw.level ?? "0"), 10) || 0;
   if (!region || !type || !levelNum) {
     throw new Error("Invalid building data");
