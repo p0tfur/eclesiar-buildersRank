@@ -424,9 +424,18 @@ export async function handleGetRankings(req: Request, res: Response): Promise<vo
     // all buildings: one latest snapshot per building (no date constraint)
     let latestSnapshots: RowDataPacket[];
     if (limitBuildings > 0) {
+      const safeLimit = Math.max(1, Math.floor(limitBuildings));
       const [rows] = await pool.execute<RowDataPacket[]>(
-        "SELECT s.id AS snapshotId, s.building_id AS buildingId, s.captured_at AS capturedAt FROM ranking_snapshots s JOIN (SELECT building_id, MAX(captured_at) AS maxCapturedAt FROM ranking_snapshots GROUP BY building_id) t ON t.building_id = s.building_id AND t.maxCapturedAt = s.captured_at ORDER BY s.captured_at DESC LIMIT ?",
-        [limitBuildings]
+        `SELECT s.id AS snapshotId, s.building_id AS buildingId, s.captured_at AS capturedAt
+         FROM ranking_snapshots s
+         JOIN (
+           SELECT building_id, MAX(captured_at) AS maxCapturedAt
+           FROM ranking_snapshots
+           GROUP BY building_id
+         ) t ON t.building_id = s.building_id AND t.maxCapturedAt = s.captured_at
+         ORDER BY s.captured_at DESC
+         LIMIT ${safeLimit}`,
+        []
       );
       latestSnapshots = rows;
     } else {
