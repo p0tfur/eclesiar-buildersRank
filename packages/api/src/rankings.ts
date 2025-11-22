@@ -234,18 +234,20 @@ export async function handlePostSnapshot(req: Request, res: Response): Promise<v
         try {
           await conn.rollback();
         } catch {
-          // ignore rollback failure
+          console.error("[VER] Failed to rollback", err);
         }
       }
       res.status(500).json({ status: "error", message: "Failed to save snapshot" });
     }
   } catch (err) {
+    console.error("[VER] Failed to save snapshot", err);
     res.status(400).json({ status: "error", message: err instanceof Error ? err.message : "Invalid payload" });
   } finally {
     if (conn) {
       try {
         conn.release();
-      } catch {
+      } catch (err) {
+        console.error("[VER] Failed to release connection", err);
         // ignore release failure
       }
     }
@@ -306,7 +308,7 @@ export async function handleGetRankings(req: Request, res: Response): Promise<vo
       }
 
       const [rows] = await pool.execute<RowDataPacket[]>(
-        "SELECT s.id AS snapshotId, s.captured_at AS capturedAt, b.name, e.rank_position AS rank, e.points FROM ranking_snapshots s JOIN ranking_entries e ON e.snapshot_id = s.id JOIN builders b ON b.id = e.builder_id WHERE s.building_id = ? AND s.captured_at BETWEEN ? AND ? ORDER BY s.captured_at DESC, e.rank_position ASC",
+        "SELECT s.id AS snapshotId, s.captured_at AS capturedAt, b.name, e.rank_position AS `rank`, e.points FROM ranking_snapshots s JOIN ranking_entries e ON e.snapshot_id = s.id JOIN builders b ON b.id = e.builder_id WHERE s.building_id = ? AND s.captured_at BETWEEN ? AND ? ORDER BY s.captured_at DESC, e.rank_position ASC",
         [buildingId, from, to]
       );
 
@@ -380,6 +382,7 @@ export async function handleGetRankings(req: Request, res: Response): Promise<vo
 
     res.json({ buildingId: null, from, to, items: rows });
   } catch (err) {
+    console.error("[VER] Failed to load rankings", err);
     res.status(500).json({ status: "error", message: "Failed to load rankings" });
   }
 }
@@ -437,13 +440,13 @@ export async function handleGetBuilderHistory(req: Request, res: Response): Prom
     if (buildingId) {
       // History for a specific building
       [rows] = await pool.execute<RowDataPacket[]>(
-        "SELECT s.id AS snapshotId, s.captured_at AS capturedAt, e.points, e.rank_position AS rank, b.id AS buildingId, b.region AS buildingRegion, b.building_type AS buildingType, b.level AS buildingLevel FROM ranking_entries e JOIN ranking_snapshots s ON s.id = e.snapshot_id JOIN buildings b ON b.id = s.building_id WHERE e.builder_id = ? AND s.building_id = ? AND s.captured_at BETWEEN ? AND ? ORDER BY s.captured_at ASC",
+        "SELECT s.id AS snapshotId, s.captured_at AS capturedAt, e.points, e.rank_position AS `rank`, b.id AS buildingId, b.region AS buildingRegion, b.building_type AS buildingType, b.level AS buildingLevel FROM ranking_entries e JOIN ranking_snapshots s ON s.id = e.snapshot_id JOIN buildings b ON b.id = s.building_id WHERE e.builder_id = ? AND s.building_id = ? AND s.captured_at BETWEEN ? AND ? ORDER BY s.captured_at ASC",
         [builderId, buildingId, from, to]
       );
     } else {
       // History for all buildings where the player participated in the given period
       [rows] = await pool.execute<RowDataPacket[]>(
-        "SELECT s.id AS snapshotId, s.captured_at AS capturedAt, e.points, e.rank_position AS rank, b.id AS buildingId, b.region AS buildingRegion, b.building_type AS buildingType, b.level AS buildingLevel FROM ranking_entries e JOIN ranking_snapshots s ON s.id = e.snapshot_id JOIN buildings b ON b.id = s.building_id WHERE e.builder_id = ? AND s.captured_at BETWEEN ? AND ? ORDER BY s.captured_at ASC, b.region ASC, b.building_type ASC, b.level ASC",
+        "SELECT s.id AS snapshotId, s.captured_at AS capturedAt, e.points, e.rank_position AS `rank`, b.id AS buildingId, b.region AS buildingRegion, b.building_type AS buildingType, b.level AS buildingLevel FROM ranking_entries e JOIN ranking_snapshots s ON s.id = e.snapshot_id JOIN buildings b ON b.id = s.building_id WHERE e.builder_id = ? AND s.captured_at BETWEEN ? AND ? ORDER BY s.captured_at ASC, b.region ASC, b.building_type ASC, b.level ASC",
         [builderId, from, to]
       );
     }
