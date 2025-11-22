@@ -79,12 +79,12 @@
             </div>
           </div>
 
-          <!-- Date Range -->
+          <!-- Aggregation Range -->
           <div class="md:col-span-4 grid grid-cols-1 gap-2">
             <div class="relative group">
               <label
                 class="absolute -top-2.5 left-3 px-1 bg-slate-900 text-[10px] font-bold text-slate-500 uppercase tracking-wider z-10"
-                >Range (days)</label
+                >Buildings to aggregate</label
               >
               <div class="relative flex items-center gap-2">
                 <div class="relative flex-1">
@@ -95,7 +95,7 @@
                     v-model.number="rangeDays"
                     class="w-full bg-slate-950 border border-slate-800 text-slate-300 text-sm rounded-lg pl-10 pr-4 py-2.5 focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 transition-all outline-none appearance-none cursor-pointer hover:bg-slate-900"
                   >
-                    <option v-for="d in rangeOptions" :key="d" :value="d">Last {{ d }} days</option>
+                    <option v-for="d in rangeOptions" :key="d" :value="d">Last {{ d }} buildings</option>
                   </select>
                 </div>
                 <div class="flex flex-col gap-1">
@@ -103,7 +103,7 @@
                     type="button"
                     @click="decrementRangeDays"
                     class="px-2 py-0.5 text-xs rounded-md border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-300"
-                    title="-1 day"
+                    title="-1 building"
                   >
                     -1
                   </button>
@@ -111,7 +111,7 @@
                     type="button"
                     @click="incrementRangeDays"
                     class="px-2 py-0.5 text-xs rounded-md border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-300"
-                    title="+1 day"
+                    title="+1 building"
                   >
                     +1
                   </button>
@@ -491,6 +491,7 @@ const errorMessage = ref<string | null>(null);
 const aggregateItems = ref<any[]>([]);
 const snapshots = ref<any[]>([]);
 const selectedSnapshotId = ref<number | null>(null);
+const usedBuildingIds = ref<number[]>([]);
 
 const builderHistory = ref<{ builderId: number | null; name: string; items: any[] }>({
   builderId: null,
@@ -507,10 +508,14 @@ const selectedSnapshot = computed(() => {
 });
 
 const totalBuildingPoints = computed(() => {
+  const activeSet =
+    usedBuildingIds.value && usedBuildingIds.value.length ? new Set<number>(usedBuildingIds.value) : null;
+
   const uniqueLevels = new Map<number, number>();
   for (const b of buildings.value) {
     const id = Number((b as any).id);
     if (!Number.isFinite(id)) continue;
+    if (activeSet && !activeSet.has(id)) continue;
     if (uniqueLevels.has(id)) continue;
     const level = Number((b as any).level) || 0;
     uniqueLevels.set(id, level);
@@ -671,14 +676,29 @@ async function loadRankings() {
     if (mode.value === "snapshot") {
       params.buildingId = selectedBuildingId.value;
     } else if (mode.value === "aggregate") {
-      if (selectedBuildingId.value) params.buildingId = selectedBuildingId.value;
+      if (selectedBuildingId.value) {
+        params.buildingId = selectedBuildingId.value;
+      } else if (rangeDays.value) {
+        params.limitBuildings = rangeDays.value;
+      }
     }
 
     const result = await getRankings(params);
 
     if (mode.value === "aggregate") {
       if (Array.isArray(result.items)) aggregateItems.value = result.items;
+
+      if (selectedBuildingId.value) {
+        usedBuildingIds.value = [selectedBuildingId.value];
+      } else if (Array.isArray(result.usedBuildingIds)) {
+        usedBuildingIds.value = result.usedBuildingIds
+          .map((id: any) => Number(id))
+          .filter((id: number) => Number.isFinite(id));
+      } else {
+        usedBuildingIds.value = [];
+      }
     } else {
+      usedBuildingIds.value = [];
       if (Array.isArray(result.snapshots)) {
         snapshots.value = result.snapshots;
         if (snapshots.value.length > 0) {
@@ -796,8 +816,9 @@ watch([selectedBuildingId, dateFrom, dateTo, mode], () => {
 });
 
 watch(rangeDays, () => {
-  initDefaultDates();
-  loadBuildings();
+  if (canLoad.value && mode.value === "aggregate") {
+    loadRankings();
+  }
 });
 
 onMounted(() => {

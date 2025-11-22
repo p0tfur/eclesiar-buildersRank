@@ -329,6 +329,7 @@ export async function handleGetRankings(req: Request, res: Response): Promise<vo
   const modeRaw = req.query.mode;
   const fromRaw = req.query.from as string | undefined;
   const toRaw = req.query.to as string | undefined;
+  const limitBuildingsRaw = req.query.limitBuildings as string | undefined;
 
   const buildingId = parseInt(String(buildingIdRaw ?? "0"), 10) || 0;
   const hasBuildingFilter = !!buildingId;
@@ -354,6 +355,8 @@ export async function handleGetRankings(req: Request, res: Response): Promise<vo
 
   const fromBase = fromRaw ? new Date(fromRaw) : new Date(to.getTime() - 7 * 24 * 60 * 60 * 1000);
   const from = makeStartOfDay(fromBase);
+
+  const limitBuildings = limitBuildingsRaw ? parseInt(limitBuildingsRaw, 10) || 0 : 0;
 
   try {
     const pool = getPool();
@@ -395,10 +398,10 @@ export async function handleGetRankings(req: Request, res: Response): Promise<vo
 
     // agregated
     if (hasBuildingFilter) {
-      // latest snapshot for specific building in the given range
+      // latest snapshot for specific building (no date constraint)
       const [latestRows] = await pool.execute<RowDataPacket[]>(
-        "SELECT id, captured_at AS capturedAt FROM ranking_snapshots WHERE building_id = ? AND captured_at BETWEEN ? AND ? ORDER BY captured_at DESC LIMIT 1",
-        [buildingId, from, to]
+        "SELECT id, captured_at AS capturedAt FROM ranking_snapshots WHERE building_id = ? ORDER BY captured_at DESC LIMIT 1",
+        [buildingId]
       );
 
       if (latestRows.length === 0) {
@@ -418,18 +421,29 @@ export async function handleGetRankings(req: Request, res: Response): Promise<vo
       return;
     }
 
-    // all buildings: one latest snapshot per building
-    const [latestSnapshots] = await pool.execute<RowDataPacket[]>(
-      "SELECT s.id AS snapshotId, s.building_id AS buildingId, s.captured_at AS capturedAt FROM ranking_snapshots s JOIN (SELECT building_id, MAX(captured_at) AS maxCapturedAt FROM ranking_snapshots WHERE captured_at BETWEEN ? AND ? GROUP BY building_id) t ON t.building_id = s.building_id AND t.maxCapturedAt = s.captured_at",
-      [from, to]
-    );
+    // all buildings: one latest snapshot per building (no date constraint)
+    let latestSnapshots: RowDataPacket[];
+    if (limitBuildings > 0) {
+      const [rows] = await pool.execute<RowDataPacket[]>(
+        "SELECT s.id AS snapshotId, s.building_id AS buildingId, s.captured_at AS capturedAt FROM ranking_snapshots s JOIN (SELECT building_id, MAX(captured_at) AS maxCapturedAt FROM ranking_snapshots GROUP BY building_id) t ON t.building_id = s.building_id AND t.maxCapturedAt = s.captured_at ORDER BY s.captured_at DESC LIMIT ?",
+        [limitBuildings]
+      );
+      latestSnapshots = rows;
+    } else {
+      const [rows] = await pool.execute<RowDataPacket[]>(
+        "SELECT s.id AS snapshotId, s.building_id AS buildingId, s.captured_at AS capturedAt FROM ranking_snapshots s JOIN (SELECT building_id, MAX(captured_at) AS maxCapturedAt FROM ranking_snapshots GROUP BY building_id) t ON t.building_id = s.building_id AND t.maxCapturedAt = s.captured_at",
+        []
+      );
+      latestSnapshots = rows;
+    }
 
     if (latestSnapshots.length === 0) {
-      res.json({ buildingId: null, from, to, items: [] });
+      res.json({ buildingId: null, from, to, items: [], usedBuildingIds: [] });
       return;
     }
 
     const snapshotIds = latestSnapshots.map((row) => Number(row.snapshotId));
+    const usedBuildingIds = Array.from(new Set(latestSnapshots.map((row) => Number(row.buildingId))));
     const placeholders = snapshotIds.map(() => "?").join(",");
 
     const [rows] = await pool.execute<RowDataPacket[]>(
@@ -437,7 +451,7 @@ export async function handleGetRankings(req: Request, res: Response): Promise<vo
       snapshotIds
     );
 
-    res.json({ buildingId: null, from, to, items: rows });
+    res.json({ buildingId: null, from, to, items: rows, usedBuildingIds });
   } catch (err) {
     console.error("[VER] Failed to load rankings", err);
     res.status(500).json({ status: "error", message: "Failed to load rankings" });
