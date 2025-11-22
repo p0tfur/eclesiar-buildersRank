@@ -277,9 +277,45 @@ export async function handlePostSnapshot(req: Request, res: Response): Promise<v
 
 export async function handleGetBuildings(req: Request, res: Response): Promise<void> {
   try {
+    const fromRaw = req.query.from as string | undefined;
+    const toRaw = req.query.to as string | undefined;
+
+    const now = new Date();
+
+    const makeStartOfDay = (d: Date) => {
+      const copy = new Date(d.getTime());
+      copy.setHours(0, 0, 0, 0);
+      return copy;
+    };
+
+    const makeEndOfDay = (d: Date) => {
+      const copy = new Date(d.getTime());
+      copy.setHours(23, 59, 59, 999);
+      return copy;
+    };
+
+    const hasDateFilter = !!fromRaw || !!toRaw;
+
+    const toBase = toRaw ? new Date(toRaw) : now;
+    const to = makeEndOfDay(toBase);
+
+    const fromBase = fromRaw ? new Date(fromRaw) : new Date(to.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const from = makeStartOfDay(fromBase);
+
     const pool = getPool();
+
+    if (!hasDateFilter) {
+      const [rows] = await pool.execute<RowDataPacket[]>(
+        "SELECT id, region, building_type AS type, level FROM buildings ORDER BY region, building_type, level"
+      );
+
+      res.json({ items: rows });
+      return;
+    }
+
     const [rows] = await pool.execute<RowDataPacket[]>(
-      "SELECT id, region, building_type AS type, level FROM buildings ORDER BY region, building_type, level"
+      "SELECT DISTINCT b.id, b.region, b.building_type AS type, b.level FROM buildings b JOIN ranking_snapshots s ON s.building_id = b.id WHERE s.captured_at BETWEEN ? AND ? ORDER BY b.region, b.building_type, b.level",
+      [from, to]
     );
 
     res.json({ items: rows });

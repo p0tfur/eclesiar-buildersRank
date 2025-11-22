@@ -28,6 +28,22 @@
     </header>
 
     <main class="container mx-auto px-4 py-8 space-y-6">
+      <section class="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 md:gap-4">
+        <div class="flex items-center gap-2 text-sm text-slate-300">
+          <FlameIcon class="w-4 h-4 text-orange-400" />
+          <span class="font-semibold">Reward Points</span>
+          <span class="font-mono text-orange-400">{{ totalBuildingPoints }}</span>
+        </div>
+        <div class="text-xs text-slate-400">
+          Rewards:
+          <span class="font-mono text-orange-300">{{ completedRewards }}</span>
+          <span class="mx-2 text-slate-600">|</span>
+          To next reward:
+          <span class="font-mono text-slate-200">{{ pointsToNextReward }}</span>
+          pts
+        </div>
+      </section>
+
       <!-- Control Panel -->
       <section
         class="bg-slate-900/50 border border-slate-800 rounded-xl p-1 shadow-xl backdrop-blur-sm relative overflow-hidden"
@@ -64,37 +80,42 @@
           </div>
 
           <!-- Date Range -->
-          <div class="md:col-span-4 grid grid-cols-2 gap-2">
+          <div class="md:col-span-4 grid grid-cols-1 gap-2">
             <div class="relative group">
               <label
                 class="absolute -top-2.5 left-3 px-1 bg-slate-900 text-[10px] font-bold text-slate-500 uppercase tracking-wider z-10"
-                >From</label
+                >Range (days)</label
               >
-              <div class="relative">
-                <CalendarIcon
-                  class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-hover:text-orange-400 transition-colors"
-                />
-                <input
-                  v-model="dateFrom"
-                  type="date"
-                  class="w-full bg-slate-950 border border-slate-800 text-slate-300 text-sm rounded-lg pl-10 pr-2 py-2.5 focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 transition-all outline-none hover:bg-slate-900 [color-scheme:dark]"
-                />
-              </div>
-            </div>
-            <div class="relative group">
-              <label
-                class="absolute -top-2.5 left-3 px-1 bg-slate-900 text-[10px] font-bold text-slate-500 uppercase tracking-wider z-10"
-                >To</label
-              >
-              <div class="relative">
-                <CalendarIcon
-                  class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-hover:text-orange-400 transition-colors"
-                />
-                <input
-                  v-model="dateTo"
-                  type="date"
-                  class="w-full bg-slate-950 border border-slate-800 text-slate-300 text-sm rounded-lg pl-10 pr-2 py-2.5 focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 transition-all outline-none hover:bg-slate-900 [color-scheme:dark]"
-                />
+              <div class="relative flex items-center gap-2">
+                <div class="relative flex-1">
+                  <CalendarIcon
+                    class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-hover:text-orange-400 transition-colors"
+                  />
+                  <select
+                    v-model.number="rangeDays"
+                    class="w-full bg-slate-950 border border-slate-800 text-slate-300 text-sm rounded-lg pl-10 pr-4 py-2.5 focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 transition-all outline-none appearance-none cursor-pointer hover:bg-slate-900"
+                  >
+                    <option v-for="d in rangeOptions" :key="d" :value="d">Last {{ d }} days</option>
+                  </select>
+                </div>
+                <div class="flex flex-col gap-1">
+                  <button
+                    type="button"
+                    @click="decrementRangeDays"
+                    class="px-2 py-0.5 text-xs rounded-md border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-300"
+                    title="-1 day"
+                  >
+                    -1
+                  </button>
+                  <button
+                    type="button"
+                    @click="incrementRangeDays"
+                    class="px-2 py-0.5 text-xs rounded-md border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-300"
+                    title="+1 day"
+                  >
+                    +1
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -463,6 +484,7 @@ const buildings = ref<any[]>([]);
 const selectedBuildingId = ref<number>(0);
 const dateFrom = ref<string>("");
 const dateTo = ref<string>("");
+const rangeDays = ref<number>(7);
 const mode = ref<"aggregate" | "snapshot">("aggregate");
 const isLoading = ref(false);
 const errorMessage = ref<string | null>(null);
@@ -482,6 +504,43 @@ const canLoad = computed(() => !!dateFrom.value && !!dateTo.value);
 const selectedSnapshot = computed(() => {
   if (!selectedSnapshotId.value) return null;
   return snapshots.value.find((s) => s.snapshotId === selectedSnapshotId.value) ?? null;
+});
+
+const totalBuildingPoints = computed(() => {
+  const uniqueLevels = new Map<number, number>();
+  for (const b of buildings.value) {
+    const id = Number((b as any).id);
+    if (!Number.isFinite(id)) continue;
+    if (uniqueLevels.has(id)) continue;
+    const level = Number((b as any).level) || 0;
+    uniqueLevels.set(id, level);
+  }
+
+  let sum = 0;
+  uniqueLevels.forEach((level) => {
+    sum += level;
+  });
+  return sum;
+});
+
+const completedRewards = computed(() => {
+  if (totalBuildingPoints.value <= 0) return 0;
+  return Math.floor(totalBuildingPoints.value / 12);
+});
+
+const pointsToNextReward = computed(() => {
+  if (totalBuildingPoints.value === 0) return 12;
+  const remainder = totalBuildingPoints.value % 12;
+  if (remainder === 0) return 0;
+  return 12 - remainder;
+});
+
+const rangeOptions = computed(() => {
+  const base = [1, 2, 3, 5, 7, 10, 30];
+  if (!base.includes(rangeDays.value)) {
+    base.push(rangeDays.value);
+  }
+  return base.sort((a, b) => a - b);
 });
 
 // Chart Configuration
@@ -566,7 +625,7 @@ const chartOptions = {
 // --- METHODS ---
 function initDefaultDates() {
   const to = new Date();
-  const from = new Date(to.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const from = new Date(to.getTime() - rangeDays.value * 24 * 60 * 60 * 1000);
   dateTo.value = to.toISOString().slice(0, 10);
   dateFrom.value = from.toISOString().slice(0, 10);
 }
@@ -574,7 +633,11 @@ function initDefaultDates() {
 async function loadBuildings() {
   try {
     errorMessage.value = null;
-    const result = await getBuildings();
+    const params: Record<string, unknown> = {};
+    if (dateFrom.value) params.from = new Date(dateFrom.value).toISOString();
+    if (dateTo.value) params.to = new Date(dateTo.value).toISOString();
+
+    const result = await getBuildings(params);
     buildings.value = Array.isArray(result.items) ? result.items : [];
   } catch (err) {
     console.error("[VER] Failed to load buildings", err);
@@ -644,19 +707,17 @@ function formatSnapshotDate(value: string | Date): string {
 function exportAggregateCsv() {
   if (mode.value !== "aggregate" || !aggregateItems.value.length) return;
 
-  const header = ["Lp.", "BuilderId", "Name", "Total Points", "Rank"];
+  const header = ["Miejsce", "Nick", "Ilość punktów"];
   const separator = ";";
   const rows: string[] = [];
   rows.push(header.join(separator));
 
   aggregateItems.value.forEach((row: any, index: number) => {
-    const values = [index + 1, row.builderId ?? "", row.name ?? "", row.totalPoints ?? "", row.averageRank ?? ""].map(
-      (v) => {
-        const text = String(v ?? "");
-        const escaped = text.replace(/"/g, '""');
-        return `"${escaped}"`;
-      }
-    );
+    const values = [index + 1, row.name ?? "", row.totalPoints ?? ""].map((v) => {
+      const text = String(v ?? "");
+      const escaped = text.replace(/"/g, '""');
+      return `"${escaped}"`;
+    });
     rows.push(values.join(separator));
   });
 
@@ -665,10 +726,33 @@ function exportAggregateCsv() {
   const url = URL.createObjectURL(blob);
 
   const a = document.createElement("a");
-  const fromPart = dateFrom.value || "";
-  const toPart = dateTo.value || "";
+  let buildingPart = "all-sites";
+  if (selectedBuildingId.value) {
+    const selectedBuilding = buildings.value.find((b: any) => b.id === selectedBuildingId.value);
+    if (selectedBuilding) {
+      const regionSafe = String(selectedBuilding.region ?? "").replace(/\s+/g, "_");
+      const typeSafe = String(selectedBuilding.type ?? "").replace(/\s+/g, "_");
+      const levelSafe =
+        selectedBuilding.level !== undefined && selectedBuilding.level !== null
+          ? `LVL${String(selectedBuilding.level)}`
+          : "";
+      buildingPart = [regionSafe, typeSafe, levelSafe].filter(Boolean).join("-");
+    }
+  }
+
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  const hours = String(now.getHours()).padStart(2, "0");
+  const minutes = String(now.getMinutes()).padStart(2, "0");
+  const seconds = String(now.getSeconds()).padStart(2, "0");
+  const timestamp = `${year}${month}${day}-${hours}${minutes}${seconds}`;
+
+  const nameParts = [buildingPart, timestamp].filter(Boolean);
+
   a.href = url;
-  a.download = `ver-aggregate-${fromPart}-${toPart}.csv`;
+  a.download = `${nameParts.join("-")}.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -711,10 +795,29 @@ watch([selectedBuildingId, dateFrom, dateTo, mode], () => {
   if (canLoad.value) loadRankings();
 });
 
+watch(rangeDays, () => {
+  initDefaultDates();
+  loadBuildings();
+});
+
 onMounted(() => {
   initDefaultDates();
   loadBuildings();
 });
+
+function adjustRangeDays(delta: number) {
+  const next = rangeDays.value + delta;
+  if (next < 1) return;
+  rangeDays.value = next;
+}
+
+function incrementRangeDays() {
+  adjustRangeDays(1);
+}
+
+function decrementRangeDays() {
+  adjustRangeDays(-1);
+}
 </script>
 
 <style scoped>
