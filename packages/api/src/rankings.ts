@@ -306,7 +306,18 @@ export async function handleGetBuildings(req: Request, res: Response): Promise<v
 
     if (!hasDateFilter) {
       const [rows] = await pool.execute<RowDataPacket[]>(
-        "SELECT id, region, building_type AS type, level FROM buildings ORDER BY region, building_type, level"
+        `SELECT b.id,
+                b.region,
+                b.building_type AS type,
+                b.level,
+                recent.lastCapturedAt AS lastCapturedAt
+         FROM buildings b
+         LEFT JOIN (
+           SELECT building_id, MAX(captured_at) AS lastCapturedAt
+           FROM ranking_snapshots
+           GROUP BY building_id
+         ) recent ON recent.building_id = b.id
+         ORDER BY (recent.lastCapturedAt IS NULL), recent.lastCapturedAt DESC, b.region, b.building_type, b.level`
       );
 
       res.json({ items: rows });
@@ -314,11 +325,24 @@ export async function handleGetBuildings(req: Request, res: Response): Promise<v
     }
 
     const [rows] = await pool.execute<RowDataPacket[]>(
-      "SELECT DISTINCT b.id, b.region, b.building_type AS type, b.level FROM buildings b JOIN ranking_snapshots s ON s.building_id = b.id WHERE s.captured_at BETWEEN ? AND ? ORDER BY b.region, b.building_type, b.level",
+      `SELECT b.id,
+              b.region,
+              b.building_type AS type,
+              b.level,
+              recent.lastCapturedAt AS lastCapturedAt
+       FROM (
+         SELECT building_id, MAX(captured_at) AS lastCapturedAt
+         FROM ranking_snapshots
+         WHERE captured_at BETWEEN ? AND ?
+         GROUP BY building_id
+       ) recent
+       JOIN buildings b ON b.id = recent.building_id
+       ORDER BY recent.lastCapturedAt DESC`,
       [from, to]
     );
 
     res.json({ items: rows });
+    return;
   } catch (err) {
     res.status(500).json({ status: "error", message: "Failed to load buildings" });
   }

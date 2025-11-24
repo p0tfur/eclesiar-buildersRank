@@ -70,7 +70,7 @@
               >
                 <option :value="0">All Sites / Global View</option>
                 <option v-for="b in buildings" :key="b.id" :value="b.id">
-                  {{ b.region }} – {{ b.type }} (LVL {{ b.level }})
+                  {{ formatBuildingOption(b) }}
                 </option>
               </select>
               <ChevronDownIcon
@@ -628,6 +628,24 @@ const chartOptions = {
 };
 
 // --- METHODS ---
+function formatBuildingOption(building: any): string {
+  const region = building?.region ? String(building.region) : "Unknown region";
+  const type = building?.type ? String(building.type) : "Unknown type";
+  const level = building?.level ?? "?";
+  const base = `${region} – ${type} (LVL ${level})`;
+
+  if (!building?.lastCapturedAt) {
+    return `${base} (no snapshot data)`;
+  }
+
+  const last = new Date(building.lastCapturedAt);
+  if (Number.isNaN(last.getTime())) {
+    return `${base} (no snapshot data)`;
+  }
+
+  return `${base} (${last.toLocaleString()})`;
+}
+
 function initDefaultDates() {
   const to = new Date();
   const from = new Date(to.getTime() - rangeDays.value * 24 * 60 * 60 * 1000);
