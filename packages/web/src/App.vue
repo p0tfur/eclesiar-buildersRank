@@ -46,36 +46,90 @@
 
       <!-- Control Panel -->
       <section
-        class="bg-slate-900/50 border border-slate-800 rounded-xl p-1 shadow-xl backdrop-blur-sm relative overflow-hidden"
+        class="bg-slate-900/50 border border-slate-800 rounded-xl p-1 shadow-xl backdrop-blur-sm relative overflow-visible"
       >
         <!-- Fox tail decoration -->
         <div
           class="absolute -right-10 -top-10 w-32 h-32 bg-orange-500/5 rounded-full blur-3xl pointer-events-none"
         ></div>
 
-        <div class="grid grid-cols-1 md:grid-cols-12 gap-2 p-2 relative z-10">
-          <!-- Building Select -->
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-2 p-2 relative z-100">
+          <!-- Building Multiselect -->
           <div class="md:col-span-3 relative group">
             <label
-              class="absolute -top-2.5 left-3 px-1 bg-slate-900 text-[10px] font-bold text-slate-500 uppercase tracking-wider z-10"
+              class="absolute -top-2.5 left-3 px-1 bg-slate-900 text-[10px] font-bold text-slate-500 uppercase tracking-wider z-50 pointer-events-none"
               >Project Site</label
             >
             <div class="relative">
               <BuildingIcon
-                class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-hover:text-orange-400 transition-colors"
+                class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-hover:text-orange-400 transition-colors z-100"
               />
-              <select
-                v-model.number="selectedBuildingId"
-                class="w-full bg-slate-950 border border-slate-800 text-slate-300 text-sm rounded-lg pl-10 pr-4 py-2.5 focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 transition-all outline-none appearance-none cursor-pointer hover:bg-slate-900"
+              <!-- Multiselect trigger button -->
+              <button
+                type="button"
+                @click="toggleMultiselect"
+                class="w-full bg-slate-950 border border-slate-800 text-slate-300 text-sm rounded-lg pl-10 pr-8 py-2.5 focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 transition-all outline-none cursor-pointer hover:bg-slate-900 text-left truncate"
               >
-                <option :value="0">All Sites / Global View</option>
-                <option v-for="b in buildings" :key="b.id" :value="b.id">
-                  {{ formatBuildingOption(b) }}
-                </option>
-              </select>
+                {{ multiselectDisplayText }}
+              </button>
               <ChevronDownIcon
-                class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-600 pointer-events-none"
+                class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-600 pointer-events-none transition-transform"
+                :class="{ 'rotate-180': isMultiselectOpen }"
               />
+
+              <!-- Dropdown panel - teleported to body for proper z-index stacking -->
+              <Teleport to="body">
+                <div
+                  v-if="isMultiselectOpen"
+                  data-multiselect-dropdown
+                  class="fixed bg-slate-950 border border-slate-800 rounded-lg shadow-2xl max-h-64 overflow-y-auto custom-scrollbar"
+                  :style="dropdownStyle"
+                >
+                  <!-- All Sites option -->
+                  <button
+                    type="button"
+                    @click="selectAllBuildings"
+                    class="w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-slate-800 transition-colors border-b border-slate-800"
+                    :class="selectedBuildingIds.length === 0 ? 'text-orange-400 bg-slate-800/50' : 'text-slate-300'"
+                  >
+                    <div
+                      class="w-4 h-4 border rounded flex items-center justify-center"
+                      :class="selectedBuildingIds.length === 0 ? 'border-orange-500 bg-orange-500' : 'border-slate-600'"
+                    >
+                      <CheckIcon v-if="selectedBuildingIds.length === 0" class="w-3 h-3 text-white" />
+                    </div>
+                    All Sites / Global View
+                  </button>
+
+                  <!-- Individual buildings -->
+                  <button
+                    v-for="b in buildings"
+                    :key="b.id"
+                    type="button"
+                    @click="toggleBuildingSelection(b.id)"
+                    class="w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-slate-800 transition-colors"
+                    :class="selectedBuildingIds.includes(b.id) ? 'text-orange-400 bg-slate-800/30' : 'text-slate-300'"
+                  >
+                    <div
+                      class="w-4 h-4 border rounded flex items-center justify-center flex-shrink-0"
+                      :class="
+                        selectedBuildingIds.includes(b.id) ? 'border-orange-500 bg-orange-500' : 'border-slate-600'
+                      "
+                    >
+                      <CheckIcon v-if="selectedBuildingIds.includes(b.id)" class="w-3 h-3 text-white" />
+                    </div>
+                    <span class="truncate">{{ formatBuildingOption(b) }}</span>
+                  </button>
+                </div>
+              </Teleport>
+            </div>
+
+            <!-- Selected count badge -->
+            <div
+              v-if="selectedBuildingIds.length > 0"
+              class="absolute -top-1 -right-1 bg-orange-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center"
+            >
+              {{ selectedBuildingIds.length }}
             </div>
           </div>
 
@@ -83,7 +137,7 @@
           <div class="md:col-span-4 grid grid-cols-1 gap-2">
             <div class="relative group">
               <label
-                class="absolute -top-2.5 left-3 px-1 bg-slate-900 text-[10px] font-bold text-slate-500 uppercase tracking-wider z-10"
+                class="absolute -top-2.5 left-3 px-1 bg-slate-900 text-[10px] font-bold text-slate-500 uppercase tracking-wider z-50 pointer-events-none"
                 >Buildings to aggregate</label
               >
               <div class="relative flex items-center gap-2">
@@ -447,7 +501,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from "vue";
+import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import { getBuildings, getRankings, getBuilderHistory } from "./api/api.js";
 import {
   FlameIcon,
@@ -462,6 +516,8 @@ import {
   GhostIcon,
   LineChartIcon,
   HashIcon,
+  CheckIcon,
+  XIcon,
 } from "lucide-vue-next";
 
 import {
@@ -481,7 +537,11 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, T
 
 // --- STATE ---
 const buildings = ref<any[]>([]);
-const selectedBuildingId = ref<number>(0);
+// Multiselect: empty array = all buildings (Global View), array with IDs = selected buildings
+const selectedBuildingIds = ref<number[]>([]);
+const isMultiselectOpen = ref(false);
+const multiselectTriggerRef = ref<HTMLElement | null>(null);
+const dropdownPosition = ref({ top: 0, left: 0, width: 0 });
 const dateFrom = ref<string>("");
 const dateTo = ref<string>("");
 const rangeDays = ref<number>(7);
@@ -547,6 +607,29 @@ const rangeOptions = computed(() => {
   }
   return base.sort((a, b) => a - b);
 });
+
+// Multiselect display text
+const multiselectDisplayText = computed(() => {
+  if (selectedBuildingIds.value.length === 0) {
+    return "All Sites / Global View";
+  }
+  if (selectedBuildingIds.value.length === 1) {
+    const building = buildings.value.find((b: any) => b.id === selectedBuildingIds.value[0]);
+    if (building) {
+      return formatBuildingOption(building);
+    }
+    return "1 site selected";
+  }
+  return `${selectedBuildingIds.value.length} sites selected`;
+});
+
+// Dropdown style for fixed positioning
+const dropdownStyle = computed(() => ({
+  top: `${dropdownPosition.value.top}px`,
+  left: `${dropdownPosition.value.left}px`,
+  width: `${dropdownPosition.value.width}px`,
+  zIndex: 9999,
+}));
 
 // Chart Configuration
 const chartData = computed(() => {
@@ -671,8 +754,9 @@ async function loadBuildings() {
 async function loadRankings() {
   if (!canLoad.value) return;
 
-  if (mode.value === "snapshot" && !selectedBuildingId.value) {
-    errorMessage.value = "Please select a specific building for Snapshot mode.";
+  // Snapshot mode requires exactly one building selected
+  if (mode.value === "snapshot" && selectedBuildingIds.value.length !== 1) {
+    errorMessage.value = "Please select exactly one building for Snapshot mode.";
     return;
   }
 
@@ -692,11 +776,17 @@ async function loadRankings() {
     if (dateTo.value) params.to = new Date(dateTo.value).toISOString();
 
     if (mode.value === "snapshot") {
-      params.buildingId = selectedBuildingId.value;
+      // Snapshot mode - single building only
+      params.buildingId = selectedBuildingIds.value[0];
     } else if (mode.value === "aggregate") {
-      if (selectedBuildingId.value) {
-        params.buildingId = selectedBuildingId.value;
+      if (selectedBuildingIds.value.length === 1) {
+        // Single building selected
+        params.buildingId = selectedBuildingIds.value[0];
+      } else if (selectedBuildingIds.value.length > 1) {
+        // Multiple buildings selected - send as comma-separated list
+        params.buildingIds = selectedBuildingIds.value.join(",");
       } else if (rangeDays.value) {
+        // No buildings selected (Global View) - use limit
         params.limitBuildings = rangeDays.value;
       }
     }
@@ -706,8 +796,8 @@ async function loadRankings() {
     if (mode.value === "aggregate") {
       if (Array.isArray(result.items)) aggregateItems.value = result.items;
 
-      if (selectedBuildingId.value) {
-        usedBuildingIds.value = [selectedBuildingId.value];
+      if (selectedBuildingIds.value.length > 0) {
+        usedBuildingIds.value = [...selectedBuildingIds.value];
       } else if (Array.isArray(result.usedBuildingIds)) {
         usedBuildingIds.value = result.usedBuildingIds
           .map((id: any) => Number(id))
@@ -765,8 +855,11 @@ function exportAggregateCsv() {
 
   const a = document.createElement("a");
   let buildingPart = "all-sites";
-  if (selectedBuildingId.value) {
-    const selectedBuilding = buildings.value.find((b: any) => b.id === selectedBuildingId.value);
+
+  // Generate filename based on selected buildings
+  if (selectedBuildingIds.value.length === 1) {
+    // Single building selected
+    const selectedBuilding = buildings.value.find((b: any) => b.id === selectedBuildingIds.value[0]);
     if (selectedBuilding) {
       const regionSafe = String(selectedBuilding.region ?? "").replace(/\s+/g, "_");
       const typeSafe = String(selectedBuilding.type ?? "").replace(/\s+/g, "_");
@@ -776,6 +869,9 @@ function exportAggregateCsv() {
           : "";
       buildingPart = [regionSafe, typeSafe, levelSafe].filter(Boolean).join("-");
     }
+  } else if (selectedBuildingIds.value.length > 1) {
+    // Multiple buildings selected
+    buildingPart = `${selectedBuildingIds.value.length}-sites`;
   }
 
   const now = new Date();
@@ -812,7 +908,10 @@ async function onShowHistory(row: any) {
     };
 
     const params: Record<string, unknown> = {};
-    if (selectedBuildingId.value) params.buildingId = selectedBuildingId.value;
+    // For builder history, use first selected building if any
+    if (selectedBuildingIds.value.length === 1) {
+      params.buildingId = selectedBuildingIds.value[0];
+    }
     if (dateFrom.value) params.from = new Date(dateFrom.value).toISOString();
     if (dateTo.value) params.to = new Date(dateTo.value).toISOString();
 
@@ -829,19 +928,18 @@ async function onShowHistory(row: any) {
 }
 
 // --- WATCHERS & LIFECYCLE ---
-watch([selectedBuildingId, dateFrom, dateTo, mode], () => {
-  if (canLoad.value) loadRankings();
-});
+watch(
+  [selectedBuildingIds, dateFrom, dateTo, mode],
+  () => {
+    if (canLoad.value) loadRankings();
+  },
+  { deep: true }
+);
 
 watch(rangeDays, () => {
   if (canLoad.value && mode.value === "aggregate") {
     loadRankings();
   }
-});
-
-onMounted(() => {
-  initDefaultDates();
-  loadBuildings();
 });
 
 function adjustRangeDays(delta: number) {
@@ -857,6 +955,61 @@ function incrementRangeDays() {
 function decrementRangeDays() {
   adjustRangeDays(-1);
 }
+
+// --- MULTISELECT FUNCTIONS ---
+function toggleMultiselect(event: MouseEvent) {
+  // Calculate position based on trigger button
+  const trigger = event.currentTarget as HTMLElement;
+  if (trigger) {
+    const rect = trigger.getBoundingClientRect();
+    dropdownPosition.value = {
+      top: rect.bottom + 4, // 4px gap
+      left: rect.left,
+      width: rect.width,
+    };
+  }
+  isMultiselectOpen.value = !isMultiselectOpen.value;
+}
+
+function selectAllBuildings() {
+  // Clear selection = All Sites / Global View
+  selectedBuildingIds.value = [];
+  isMultiselectOpen.value = false;
+}
+
+function toggleBuildingSelection(buildingId: number) {
+  const index = selectedBuildingIds.value.indexOf(buildingId);
+  if (index === -1) {
+    // Add to selection
+    selectedBuildingIds.value = [...selectedBuildingIds.value, buildingId];
+  } else {
+    // Remove from selection
+    selectedBuildingIds.value = selectedBuildingIds.value.filter((id) => id !== buildingId);
+  }
+}
+
+// Close multiselect when clicking outside
+function handleClickOutside(event: MouseEvent) {
+  const target = event.target as HTMLElement;
+  // Check if click is inside the trigger area or the teleported dropdown
+  const isInsideTrigger = target.closest(".md\\:col-span-3.relative.group");
+  const isInsideDropdown = target.closest("[data-multiselect-dropdown]");
+  if (!isInsideTrigger && !isInsideDropdown) {
+    isMultiselectOpen.value = false;
+  }
+}
+
+// --- LIFECYCLE ---
+onMounted(() => {
+  initDefaultDates();
+  loadBuildings();
+  // Add click outside listener for multiselect
+  document.addEventListener("click", handleClickOutside);
+});
+
+onUnmounted(() => {
+  document.removeEventListener("click", handleClickOutside);
+});
 </script>
 
 <style scoped>

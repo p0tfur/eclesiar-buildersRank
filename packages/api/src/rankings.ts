@@ -350,13 +350,27 @@ export async function handleGetBuildings(req: Request, res: Response): Promise<v
 
 export async function handleGetRankings(req: Request, res: Response): Promise<void> {
   const buildingIdRaw = req.query.buildingId;
+  const buildingIdsRaw = req.query.buildingIds; // Support for multiple building IDs
   const modeRaw = req.query.mode;
   const fromRaw = req.query.from as string | undefined;
   const toRaw = req.query.to as string | undefined;
   const limitBuildingsRaw = req.query.limitBuildings as string | undefined;
 
+  // Parse single buildingId (for backward compatibility and snapshot mode)
   const buildingId = parseInt(String(buildingIdRaw ?? "0"), 10) || 0;
-  const hasBuildingFilter = !!buildingId;
+
+  // Parse multiple buildingIds (comma-separated string)
+  let buildingIds: number[] = [];
+  if (buildingIdsRaw) {
+    const idsStr = String(buildingIdsRaw);
+    buildingIds = idsStr
+      .split(",")
+      .map((id) => parseInt(id.trim(), 10))
+      .filter((id) => Number.isFinite(id) && id > 0);
+  }
+
+  // Determine if we have building filter (single or multiple)
+  const hasBuildingFilter = !!buildingId || buildingIds.length > 0;
 
   const mode = String(modeRaw || "aggregate");
 
@@ -422,26 +436,78 @@ export async function handleGetRankings(req: Request, res: Response): Promise<vo
 
     // agregated
     if (hasBuildingFilter) {
-      // latest snapshot for specific building (no date constraint)
-      const [latestRows] = await pool.execute<RowDataPacket[]>(
-        "SELECT id, captured_at AS capturedAt FROM ranking_snapshots WHERE building_id = ? ORDER BY captured_at DESC LIMIT 1",
-        [buildingId]
-      );
+      // Determine which building IDs to use
+      const targetBuildingIds = buildingIds.length > 0 ? buildingIds : [buildingId];
 
-      if (latestRows.length === 0) {
-        res.json({ buildingId, from, to, items: [] });
+      if (targetBuildingIds.length === 1) {
+        // Single building - original logic
+        const singleBuildingId = targetBuildingIds[0];
+        const [latestRows] = await pool.execute<RowDataPacket[]>(
+          "SELECT id, captured_at AS capturedAt FROM ranking_snapshots WHERE building_id = ? ORDER BY captured_at DESC LIMIT 1",
+          [singleBuildingId]
+        );
+
+        if (latestRows.length === 0) {
+          res.json({ buildingId: singleBuildingId, from, to, items: [], usedBuildingIds: [singleBuildingId] });
+          return;
+        }
+
+        const latestSnapshotId = Number(latestRows[0].id);
+        const latestCapturedAt = latestRows[0].capturedAt as Date;
+
+        const [rows] = await pool.execute<RowDataPacket[]>(
+          "SELECT b.id AS builderId, b.name, e.points AS totalPoints, e.rank_position AS averageRank, 1 AS entriesCount FROM ranking_entries e JOIN builders b ON b.id = e.builder_id WHERE e.snapshot_id = ? ORDER BY totalPoints DESC",
+          [latestSnapshotId]
+        );
+
+        res.json({
+          buildingId: singleBuildingId,
+          from,
+          to,
+          latestSnapshotId,
+          latestCapturedAt,
+          items: rows,
+          usedBuildingIds: [singleBuildingId],
+        });
         return;
       }
 
-      const latestSnapshotId = Number(latestRows[0].id);
-      const latestCapturedAt = latestRows[0].capturedAt as Date;
-
-      const [rows] = await pool.execute<RowDataPacket[]>(
-        "SELECT b.id AS builderId, b.name, e.points AS totalPoints, e.rank_position AS averageRank, 1 AS entriesCount FROM ranking_entries e JOIN builders b ON b.id = e.builder_id WHERE e.snapshot_id = ? ORDER BY totalPoints DESC",
-        [latestSnapshotId]
+      // Multiple buildings - get latest snapshot for each selected building
+      const placeholders = targetBuildingIds.map(() => "?").join(",");
+      const [latestSnapshots] = await pool.execute<RowDataPacket[]>(
+        `SELECT s.id AS snapshotId, s.building_id AS buildingId, s.captured_at AS capturedAt
+         FROM ranking_snapshots s
+         JOIN (
+           SELECT building_id, MAX(captured_at) AS maxCapturedAt
+           FROM ranking_snapshots
+           WHERE building_id IN (${placeholders})
+           GROUP BY building_id
+         ) t ON t.building_id = s.building_id AND t.maxCapturedAt = s.captured_at`,
+        targetBuildingIds
       );
 
-      res.json({ buildingId, from, to, latestSnapshotId, latestCapturedAt, items: rows });
+      if (latestSnapshots.length === 0) {
+        res.json({
+          buildingId: null,
+          buildingIds: targetBuildingIds,
+          from,
+          to,
+          items: [],
+          usedBuildingIds: targetBuildingIds,
+        });
+        return;
+      }
+
+      const snapshotIds = latestSnapshots.map((row) => Number(row.snapshotId));
+      const usedBuildingIds = Array.from(new Set(latestSnapshots.map((row) => Number(row.buildingId))));
+      const snapshotPlaceholders = snapshotIds.map(() => "?").join(",");
+
+      const [rows] = await pool.execute<RowDataPacket[]>(
+        `SELECT b.id AS builderId, b.name, SUM(e.points) AS totalPoints, AVG(e.rank_position) AS averageRank, COUNT(*) AS entriesCount FROM ranking_entries e JOIN builders b ON b.id = e.builder_id WHERE e.snapshot_id IN (${snapshotPlaceholders}) GROUP BY b.id, b.name ORDER BY totalPoints DESC`,
+        snapshotIds
+      );
+
+      res.json({ buildingId: null, buildingIds: targetBuildingIds, from, to, items: rows, usedBuildingIds });
       return;
     }
 
