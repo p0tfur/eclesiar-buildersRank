@@ -149,6 +149,7 @@
                     v-model.number="rangeDays"
                     class="w-full bg-slate-950 border border-slate-800 text-slate-300 text-sm rounded-lg pl-10 pr-4 py-2.5 focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 transition-all outline-none appearance-none cursor-pointer hover:bg-slate-900"
                   >
+                    <option :value="0">All buildings</option>
                     <option v-for="d in rangeOptions" :key="d" :value="d">Last {{ d }} buildings</option>
                   </select>
                 </div>
@@ -602,7 +603,7 @@ const pointsToNextReward = computed(() => {
 
 const rangeOptions = computed(() => {
   const base = [1, 2, 3, 5, 7, 10, 30];
-  if (!base.includes(rangeDays.value)) {
+  if (rangeDays.value > 0 && !base.includes(rangeDays.value)) {
     base.push(rangeDays.value);
   }
   return base.sort((a, b) => a - b);
@@ -739,11 +740,7 @@ function initDefaultDates() {
 async function loadBuildings() {
   try {
     errorMessage.value = null;
-    const params: Record<string, unknown> = {};
-    if (dateFrom.value) params.from = new Date(dateFrom.value).toISOString();
-    if (dateTo.value) params.to = new Date(dateTo.value).toISOString();
-
-    const result = await getBuildings(params);
+    const result = await getBuildings();
     buildings.value = Array.isArray(result.items) ? result.items : [];
   } catch (err) {
     console.error("[VER] Failed to load buildings", err);
@@ -944,7 +941,7 @@ watch(rangeDays, () => {
 
 function adjustRangeDays(delta: number) {
   const next = rangeDays.value + delta;
-  if (next < 1) return;
+  if (next < 0) return;
   rangeDays.value = next;
 }
 
