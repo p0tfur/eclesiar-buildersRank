@@ -898,23 +898,29 @@ function getPrizeBreakdown(row: any, index: number) {
   if (rowPoints <= 0) return null;
 
   const percentage = rowPoints / context.totalPoints;
-  const isEligible = index < context.eligibleCount;
-  const leader = aggregateItems.value[0] ?? null;
-  const leaderPoints = Number(leader?.totalPoints) || 0;
-  const leaderPercentage = leaderPoints > 0 ? leaderPoints / context.totalPoints : 0;
-  const leaderShare = leaderPercentage * context.prizePool;
   const eligibleRowsCount = aggregateItems.value.slice(0, context.eligibleCount).length;
-  const redistributionSlots = Math.max(0, eligibleRowsCount - 1);
+  const isEligible = index < context.eligibleCount;
+  const isRewarded = index > 0 && index < eligibleRowsCount;
+  const rewardedCount = Math.max(0, eligibleRowsCount - 1);
+
+  const excludedPool = aggregateItems.value.reduce((sum: number, item: any, itemIndex: number) => {
+    const itemPoints = Number(item?.totalPoints) || 0;
+    if (itemPoints <= 0) return sum;
+
+    const itemPercentage = itemPoints / context.totalPoints;
+    const isItemRewarded = itemIndex > 0 && itemIndex < eligibleRowsCount;
+    if (isItemRewarded) {
+      return sum;
+    }
+
+    return sum + itemPercentage * context.prizePool;
+  }, 0);
 
   let prizeAmount = 0;
-  if (isEligible) {
-    if (index === 0) {
-      prizeAmount = 0;
-    } else {
-      const baseShare = percentage * context.prizePool;
-      const redistributedLeaderShare = redistributionSlots > 0 ? leaderShare / redistributionSlots : 0;
-      prizeAmount = baseShare + redistributedLeaderShare;
-    }
+  if (isRewarded) {
+    const baseShare = percentage * context.prizePool;
+    const redistributedExcludedShare = rewardedCount > 0 ? excludedPool / rewardedCount : 0;
+    prizeAmount = baseShare + redistributedExcludedShare;
   }
 
   return {
