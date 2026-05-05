@@ -430,6 +430,7 @@
 - **2026-05-03**: przygotowano ręczny skrypt SQL do phpMyAdmin dla importu snapshotu z pliku `krakow_strefa_przemysowa_lvl_5_2026-05-03_15-27-55.csv`, aby uzupełnić dane pominięte przy braku użycia akcji „Wyślij ranking do VER”.
 - **2026-05-05**: dodano do tabeli agregowanej kolumnę `Prize` między `Entries` i `Action`; dla pojedynczej budowy pokazuje procent udziału gracza w punktach budowy oraz wyliczoną kwotę z puli zależnej od poziomu (`45/70/135/200/320 PLN`) od snapshotów od `2026-05-05`, z limitem wypłat dla top 10 na poziomach `1-3` i top 20 na poziomach `4-5`, przy czym 100% puli jest rozdzielane między faktycznie nagradzanych graczy, a udział lidera oraz osób poza limitem jest redystrybuowany równo na wypłacane miejsca.
 - **2026-05-05**: przygotowano ręczny skrypt SQL do phpMyAdmin dla importu snapshotu z pliku `Gdansk_szpital_lvl_3_2026-05-05_17-59-37.csv`, aby uzupełnić dane pominięte przy braku użycia akcji „Wyślij ranking do VER”.
+- **2026-05-05**: poprawiono warunek wyświetlania `Prize`, aby kolumna działała także w widoku globalnym, gdy filtr zwraca dokładnie jedną używaną budowę, np. przy ustawieniu `Last 1`.
 
 > Rozbudowa widoku **snapshotów** (oś czasu, porównania) pozostaje opcją na przyszłość, ale przy obecnym założeniu jednego snapshotu na budowę nie jest priorytetem.
 

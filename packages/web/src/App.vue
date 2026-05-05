@@ -588,9 +588,17 @@ const selectedSnapshot = computed(() => {
 });
 
 const selectedAggregateBuilding = computed(() => {
-  if (mode.value !== "aggregate" || selectedBuildingIds.value.length !== 1) return null;
-  const selectedId = selectedBuildingIds.value[0];
-  return buildings.value.find((b: any) => Number(b?.id) === selectedId) ?? null;
+  if (mode.value !== "aggregate") return null;
+
+  const effectiveBuildingIds =
+    selectedBuildingIds.value.length > 0
+      ? selectedBuildingIds.value
+      : usedBuildingIds.value.filter((id: number) => Number.isFinite(id));
+
+  if (effectiveBuildingIds.length !== 1) return null;
+
+  const selectedId = effectiveBuildingIds[0];
+  return buildings.value.find((b: any) => Number(b?.id) === Number(selectedId)) ?? null;
 });
 
 const aggregateBuildingTotalPoints = computed(() => {
@@ -599,7 +607,6 @@ const aggregateBuildingTotalPoints = computed(() => {
 
 const prizeContext = computed(() => {
   if (mode.value !== "aggregate") return null;
-  if (selectedBuildingIds.value.length !== 1) return null;
 
   const building = selectedAggregateBuilding.value;
   if (!building) return null;
