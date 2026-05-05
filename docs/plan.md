@@ -418,11 +418,17 @@
 2. **Lepsze UX w historii gracza**:
    - prosty wykres (np. liniowy) punktów w czasie,
    - filtr po minimalnej liczbie snapshotów / po regionie.
+
 3. **Eksport/raporty**:
    - eksport widoku agregowanego do CSV/JSON bezpośrednio z frontendu.
 4. **Hardening API**:
    - rate limiting dla `POST /api/rankings/snapshots`,
    - ewentualny log audytowy (kto i z jakiego klucza wysyła snapshoty).
+
+## 11. Postęp prac
+
+- **2026-05-03**: przygotowano ręczny skrypt SQL do phpMyAdmin dla importu snapshotu z pliku `krakow_strefa_przemysowa_lvl_5_2026-05-03_15-27-55.csv`, aby uzupełnić dane pominięte przy braku użycia akcji „Wyślij ranking do VER”.
+- **2026-05-05**: dodano do tabeli agregowanej kolumnę `Prize` między `Entries` i `Action`; dla pojedynczej budowy pokazuje procent udziału gracza w punktach budowy oraz wyliczoną kwotę z puli zależnej od poziomu (`45/70/135/200/320 PLN`) od snapshotów od `2026-05-05`, z limitem wypłat dla top 10 na poziomach `1-3` i top 20 na poziomach `4-5`, przy czym udział lidera nie jest wypłacany liderowi i jest redystrybuowany równo na pozostałych nagradzanych graczy.
 
 > Rozbudowa widoku **snapshotów** (oś czasu, porównania) pozostaje opcją na przyszłość, ale przy obecnym założeniu jednego snapshotu na budowę nie jest priorytetem.
 

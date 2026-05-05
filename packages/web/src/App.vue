@@ -330,6 +330,12 @@
                   >
                     Entries
                   </th>
+                  <th
+                    class="px-6 py-4 text-right"
+                    title="Udział procentowy w punktach danej budowy oraz wyliczona nagroda dla pojedynczej budowy od 2026-05-05"
+                  >
+                    Prize
+                  </th>
                   <th class="px-6 py-4 text-center" title="Pokaż szczegółową historię punktów dla tego gracza">
                     Action
                   </th>
@@ -363,6 +369,9 @@
                   </td>
                   <td class="px-6 py-4 text-right text-slate-500">
                     {{ row.entriesCount }}
+                  </td>
+                  <td class="px-6 py-4 text-right font-mono text-emerald-300">
+                    {{ formatPrizeCell(row, index) }}
                   </td>
                   <td class="px-6 py-4 text-center">
                     <button
@@ -537,6 +546,15 @@ import { Line } from "vue-chartjs";
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
 
 // --- STATE ---
+const PRIZE_RULES_START = new Date("2026-05-05T00:00:00");
+const PRIZE_POOL_BY_LEVEL: Record<number, number> = {
+  1: 45,
+  2: 70,
+  3: 135,
+  4: 200,
+  5: 320,
+};
+
 const buildings = ref<any[]>([]);
 // Multiselect: empty array = all buildings (Global View), array with IDs = selected buildings
 const selectedBuildingIds = ref<number[]>([]);
@@ -553,6 +571,7 @@ const aggregateItems = ref<any[]>([]);
 const snapshots = ref<any[]>([]);
 const selectedSnapshotId = ref<number | null>(null);
 const usedBuildingIds = ref<number[]>([]);
+const aggregateLatestCapturedAt = ref<string | null>(null);
 
 const builderHistory = ref<{ builderId: number | null; name: string; items: any[] }>({
   builderId: null,
@@ -566,6 +585,46 @@ const canLoad = computed(() => !!dateFrom.value && !!dateTo.value);
 const selectedSnapshot = computed(() => {
   if (!selectedSnapshotId.value) return null;
   return snapshots.value.find((s) => s.snapshotId === selectedSnapshotId.value) ?? null;
+});
+
+const selectedAggregateBuilding = computed(() => {
+  if (mode.value !== "aggregate" || selectedBuildingIds.value.length !== 1) return null;
+  const selectedId = selectedBuildingIds.value[0];
+  return buildings.value.find((b: any) => Number(b?.id) === selectedId) ?? null;
+});
+
+const aggregateBuildingTotalPoints = computed(() => {
+  return aggregateItems.value.reduce((sum: number, row: any) => sum + (Number(row?.totalPoints) || 0), 0);
+});
+
+const prizeContext = computed(() => {
+  if (mode.value !== "aggregate") return null;
+  if (selectedBuildingIds.value.length !== 1) return null;
+
+  const building = selectedAggregateBuilding.value;
+  if (!building) return null;
+
+  const capturedAtRaw = aggregateLatestCapturedAt.value ?? building.lastCapturedAt ?? null;
+  if (!capturedAtRaw) return null;
+
+  const capturedAt = new Date(capturedAtRaw);
+  if (Number.isNaN(capturedAt.getTime()) || capturedAt < PRIZE_RULES_START) {
+    return null;
+  }
+
+  const level = Number(building.level) || 0;
+  const prizePool = PRIZE_POOL_BY_LEVEL[level];
+  if (!prizePool) return null;
+
+  const totalPoints = aggregateBuildingTotalPoints.value;
+  if (totalPoints <= 0) return null;
+
+  return {
+    level,
+    prizePool,
+    totalPoints,
+    eligibleCount: level >= 4 ? 20 : 10,
+  };
 });
 
 const totalBuildingPoints = computed(() => {
@@ -762,6 +821,7 @@ async function loadRankings() {
   aggregateItems.value = [];
   snapshots.value = [];
   selectedSnapshotId.value = null;
+  aggregateLatestCapturedAt.value = null;
 
   // Reset history when reloading main data to avoid confusion
   // builderHistory.value = { builderId: null, name: "", items: [] };
@@ -792,6 +852,7 @@ async function loadRankings() {
 
     if (mode.value === "aggregate") {
       if (Array.isArray(result.items)) aggregateItems.value = result.items;
+      aggregateLatestCapturedAt.value = result.latestCapturedAt ? String(result.latestCapturedAt) : null;
 
       if (selectedBuildingIds.value.length > 0) {
         usedBuildingIds.value = [...selectedBuildingIds.value];
@@ -827,6 +888,52 @@ function formatSnapshotDate(value: string | Date): string {
   const d = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(d.getTime())) return String(value);
   return d.toLocaleString();
+}
+
+function getPrizeBreakdown(row: any, index: number) {
+  const context = prizeContext.value;
+  if (!context) return null;
+
+  const rowPoints = Number(row?.totalPoints) || 0;
+  if (rowPoints <= 0) return null;
+
+  const percentage = rowPoints / context.totalPoints;
+  const isEligible = index < context.eligibleCount;
+  const leader = aggregateItems.value[0] ?? null;
+  const leaderPoints = Number(leader?.totalPoints) || 0;
+  const leaderPercentage = leaderPoints > 0 ? leaderPoints / context.totalPoints : 0;
+  const leaderShare = leaderPercentage * context.prizePool;
+  const eligibleRowsCount = aggregateItems.value.slice(0, context.eligibleCount).length;
+  const redistributionSlots = Math.max(0, eligibleRowsCount - 1);
+
+  let prizeAmount = 0;
+  if (isEligible) {
+    if (index === 0) {
+      prizeAmount = 0;
+    } else {
+      const baseShare = percentage * context.prizePool;
+      const redistributedLeaderShare = redistributionSlots > 0 ? leaderShare / redistributionSlots : 0;
+      prizeAmount = baseShare + redistributedLeaderShare;
+    }
+  }
+
+  return {
+    percentage,
+    prizeAmount,
+    isEligible,
+  };
+}
+
+function formatPrizeCell(row: any, index: number): string {
+  const breakdown = getPrizeBreakdown(row, index);
+  if (!breakdown) return "-";
+
+  const percentageLabel = `${(breakdown.percentage * 100).toFixed(2)}%`;
+  if (!breakdown.isEligible) {
+    return `${percentageLabel} · 0.00 PLN`;
+  }
+
+  return `${percentageLabel} · ${breakdown.prizeAmount.toFixed(2)} PLN`;
 }
 
 function exportAggregateCsv() {
