@@ -848,13 +848,13 @@ function formatPrizeCell(row: any): string {
 function exportAggregateCsv() {
   if (mode.value !== "aggregate" || !aggregateItems.value.length) return;
 
-  const header = ["Miejsce", "Nick", "Ilość punktów"];
+  const header = ["Miejsce", "Nick", "Ilość punktów", "Prize"];
   const separator = ";";
   const rows: string[] = [];
   rows.push(header.join(separator));
 
   aggregateItems.value.forEach((row: any, index: number) => {
-    const values = [index + 1, row.name ?? "", row.totalPoints ?? ""].map((v) => {
+    const values = [index + 1, row.name ?? "", row.totalPoints ?? "", formatPrizeCell(row)].map((v) => {
       const text = String(v ?? "");
       const escaped = text.replace(/"/g, '""');
       return `"${escaped}"`;

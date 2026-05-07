@@ -432,6 +432,7 @@
 - **2026-05-05**: przygotowano ręczny skrypt SQL do phpMyAdmin dla importu snapshotu z pliku `Gdansk_szpital_lvl_3_2026-05-05_17-59-37.csv`, aby uzupełnić dane pominięte przy braku użycia akcji „Wyślij ranking do VER”.
 - **2026-05-05**: poprawiono warunek wyświetlania `Prize`, aby kolumna działała także w widoku globalnym, gdy filtr zwraca dokładnie jedną używaną budowę, np. przy ustawieniu `Last 1`.
 - **2026-05-07**: przeniesiono naliczanie `Prize` do backendu i zapis do `ranking_entries.prize_amount`, dodano pole `ranking_entries.is_paid`, rozszerzono agregację nagród na wiele wybranych budów oraz wykluczono z naliczania nagród budowę `gdansk-hospital-lvl-5` z `created_at = 2026-05-05 16:06:49`.
+- **2026-05-07**: rozszerzono opcję `Export CSV` w widoku agregowanym o kolumnę `Prize`, eksportując tę samą sformatowaną kwotę nagrody, która jest widoczna w tabeli.
 
 > Rozbudowa widoku **snapshotów** (oś czasu, porównania) pozostaje opcją na przyszłość, ale przy obecnym założeniu jednego snapshotu na budowę nie jest priorytetem.
 
