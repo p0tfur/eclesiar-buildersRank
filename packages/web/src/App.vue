@@ -370,8 +370,20 @@
                   <td class="px-6 py-4 text-right text-slate-500">
                     {{ row.entriesCount }}
                   </td>
-                  <td class="px-6 py-4 text-right font-mono text-emerald-300">
-                    {{ formatPrizeCell(row) }}
+                  <td class="px-6 py-4">
+                    <div class="flex items-center justify-end gap-2 font-mono text-emerald-300">
+                      <span>{{ formatPrizeCell(row) }}</span>
+                      <CheckIcon
+                        v-if="getPrizePaymentState(row) === 'paid'"
+                        class="w-4 h-4 text-emerald-400"
+                        title="Prize paid"
+                      />
+                      <XIcon
+                        v-else-if="getPrizePaymentState(row) === 'unpaid'"
+                        class="w-4 h-4 text-rose-400"
+                        title="Prize unpaid"
+                      />
+                    </div>
                   </td>
                   <td class="px-6 py-4 text-center">
                     <button
@@ -843,6 +855,12 @@ function formatPrizeCell(row: any): string {
   const prizeAmount = Number(row.totalPrize);
   if (!Number.isFinite(prizeAmount)) return "-";
   return `${prizeAmount.toFixed(2)} PLN`;
+}
+
+function getPrizePaymentState(row: any): "paid" | "unpaid" | null {
+  if (row?.totalPrize == null) return null;
+  if (row?.isPaid == null) return null;
+  return Number(row.isPaid) === 1 ? "paid" : "unpaid";
 }
 
 function exportAggregateCsv() {
