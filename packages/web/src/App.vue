@@ -332,7 +332,7 @@
                   </th>
                   <th
                     class="px-6 py-4 text-right"
-                    title="Udział procentowy w punktach danej budowy oraz wyliczona nagroda dla pojedynczej budowy od 2026-05-05"
+                    title="Zsumowana kwota nagrody wyliczona i zapisana w bazie dla aktywnych snapshotów"
                   >
                     Prize
                   </th>
@@ -371,7 +371,7 @@
                     {{ row.entriesCount }}
                   </td>
                   <td class="px-6 py-4 text-right font-mono text-emerald-300">
-                    {{ formatPrizeCell(row, index) }}
+                    {{ formatPrizeCell(row) }}
                   </td>
                   <td class="px-6 py-4 text-center">
                     <button
@@ -546,15 +546,6 @@ import { Line } from "vue-chartjs";
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
 
 // --- STATE ---
-const PRIZE_RULES_START = new Date("2026-05-05T00:00:00");
-const PRIZE_POOL_BY_LEVEL: Record<number, number> = {
-  1: 45,
-  2: 70,
-  3: 135,
-  4: 200,
-  5: 320,
-};
-
 const buildings = ref<any[]>([]);
 // Multiselect: empty array = all buildings (Global View), array with IDs = selected buildings
 const selectedBuildingIds = ref<number[]>([]);
@@ -571,7 +562,6 @@ const aggregateItems = ref<any[]>([]);
 const snapshots = ref<any[]>([]);
 const selectedSnapshotId = ref<number | null>(null);
 const usedBuildingIds = ref<number[]>([]);
-const aggregateLatestCapturedAt = ref<string | null>(null);
 
 const builderHistory = ref<{ builderId: number | null; name: string; items: any[] }>({
   builderId: null,
@@ -585,53 +575,6 @@ const canLoad = computed(() => !!dateFrom.value && !!dateTo.value);
 const selectedSnapshot = computed(() => {
   if (!selectedSnapshotId.value) return null;
   return snapshots.value.find((s) => s.snapshotId === selectedSnapshotId.value) ?? null;
-});
-
-const selectedAggregateBuilding = computed(() => {
-  if (mode.value !== "aggregate") return null;
-
-  const effectiveBuildingIds =
-    selectedBuildingIds.value.length > 0
-      ? selectedBuildingIds.value
-      : usedBuildingIds.value.filter((id: number) => Number.isFinite(id));
-
-  if (effectiveBuildingIds.length !== 1) return null;
-
-  const selectedId = effectiveBuildingIds[0];
-  return buildings.value.find((b: any) => Number(b?.id) === Number(selectedId)) ?? null;
-});
-
-const aggregateBuildingTotalPoints = computed(() => {
-  return aggregateItems.value.reduce((sum: number, row: any) => sum + (Number(row?.totalPoints) || 0), 0);
-});
-
-const prizeContext = computed(() => {
-  if (mode.value !== "aggregate") return null;
-
-  const building = selectedAggregateBuilding.value;
-  if (!building) return null;
-
-  const capturedAtRaw = aggregateLatestCapturedAt.value ?? building.lastCapturedAt ?? null;
-  if (!capturedAtRaw) return null;
-
-  const capturedAt = new Date(capturedAtRaw);
-  if (Number.isNaN(capturedAt.getTime()) || capturedAt < PRIZE_RULES_START) {
-    return null;
-  }
-
-  const level = Number(building.level) || 0;
-  const prizePool = PRIZE_POOL_BY_LEVEL[level];
-  if (!prizePool) return null;
-
-  const totalPoints = aggregateBuildingTotalPoints.value;
-  if (totalPoints <= 0) return null;
-
-  return {
-    level,
-    prizePool,
-    totalPoints,
-    eligibleCount: level >= 4 ? 20 : 10,
-  };
 });
 
 const totalBuildingPoints = computed(() => {
@@ -828,7 +771,6 @@ async function loadRankings() {
   aggregateItems.value = [];
   snapshots.value = [];
   selectedSnapshotId.value = null;
-  aggregateLatestCapturedAt.value = null;
 
   // Reset history when reloading main data to avoid confusion
   // builderHistory.value = { builderId: null, name: "", items: [] };
@@ -859,7 +801,6 @@ async function loadRankings() {
 
     if (mode.value === "aggregate") {
       if (Array.isArray(result.items)) aggregateItems.value = result.items;
-      aggregateLatestCapturedAt.value = result.latestCapturedAt ? String(result.latestCapturedAt) : null;
 
       if (selectedBuildingIds.value.length > 0) {
         usedBuildingIds.value = [...selectedBuildingIds.value];
@@ -897,56 +838,11 @@ function formatSnapshotDate(value: string | Date): string {
   return d.toLocaleString();
 }
 
-function getPrizeBreakdown(row: any, index: number) {
-  const context = prizeContext.value;
-  if (!context) return null;
-
-  const rowPoints = Number(row?.totalPoints) || 0;
-  if (rowPoints <= 0) return null;
-
-  const percentage = rowPoints / context.totalPoints;
-  const eligibleRowsCount = aggregateItems.value.slice(0, context.eligibleCount).length;
-  const isEligible = index < context.eligibleCount;
-  const isRewarded = index > 0 && index < eligibleRowsCount;
-  const rewardedCount = Math.max(0, eligibleRowsCount - 1);
-
-  const excludedPool = aggregateItems.value.reduce((sum: number, item: any, itemIndex: number) => {
-    const itemPoints = Number(item?.totalPoints) || 0;
-    if (itemPoints <= 0) return sum;
-
-    const itemPercentage = itemPoints / context.totalPoints;
-    const isItemRewarded = itemIndex > 0 && itemIndex < eligibleRowsCount;
-    if (isItemRewarded) {
-      return sum;
-    }
-
-    return sum + itemPercentage * context.prizePool;
-  }, 0);
-
-  let prizeAmount = 0;
-  if (isRewarded) {
-    const baseShare = percentage * context.prizePool;
-    const redistributedExcludedShare = rewardedCount > 0 ? excludedPool / rewardedCount : 0;
-    prizeAmount = baseShare + redistributedExcludedShare;
-  }
-
-  return {
-    percentage,
-    prizeAmount,
-    isEligible,
-  };
-}
-
-function formatPrizeCell(row: any, index: number): string {
-  const breakdown = getPrizeBreakdown(row, index);
-  if (!breakdown) return "-";
-
-  const percentageLabel = `${(breakdown.percentage * 100).toFixed(2)}%`;
-  if (!breakdown.isEligible) {
-    return `${percentageLabel} · 0.00 PLN`;
-  }
-
-  return `${percentageLabel} · ${breakdown.prizeAmount.toFixed(2)} PLN`;
+function formatPrizeCell(row: any): string {
+  if (row?.totalPrize == null) return "-";
+  const prizeAmount = Number(row.totalPrize);
+  if (!Number.isFinite(prizeAmount)) return "-";
+  return `${prizeAmount.toFixed(2)} PLN`;
 }
 
 function exportAggregateCsv() {

@@ -54,6 +54,8 @@ CREATE TABLE IF NOT EXISTS ranking_entries (
   builder_id BIGINT UNSIGNED NOT NULL,
   rank_position INT NOT NULL,
   points DECIMAL(15,3) UNSIGNED NOT NULL,
+  prize_amount DECIMAL(10,2) DEFAULT NULL,
+  is_paid TINYINT(1) NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
   KEY idx_entries_snapshot (snapshot_id),
   KEY idx_entries_builder_snapshot (builder_id, snapshot_id),

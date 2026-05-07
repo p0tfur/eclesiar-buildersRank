@@ -2,6 +2,7 @@ import crypto from "crypto";
 import type { Request, Response } from "express";
 import type { PoolConnection, RowDataPacket, ResultSetHeader } from "mysql2/promise";
 import { getPool } from "./db";
+import { syncSnapshotPrizeAmounts } from "./prizes";
 
 interface SnapshotBuildingPayload {
   region: string;
@@ -246,6 +247,8 @@ export async function handlePostSnapshot(req: Request, res: Response): Promise<v
         insertedEntries += 1;
       }
 
+      await syncSnapshotPrizeAmounts(conn, [snapshotId]);
+
       await conn.commit();
 
       res.json({ status: "ok", snapshotId, insertedEntries });
@@ -455,8 +458,10 @@ export async function handleGetRankings(req: Request, res: Response): Promise<vo
         const latestSnapshotId = Number(latestRows[0].id);
         const latestCapturedAt = latestRows[0].capturedAt as Date;
 
+        await syncSnapshotPrizeAmounts(pool, [latestSnapshotId]);
+
         const [rows] = await pool.execute<RowDataPacket[]>(
-          "SELECT b.id AS builderId, b.name, e.points AS totalPoints, e.rank_position AS averageRank, 1 AS entriesCount FROM ranking_entries e JOIN builders b ON b.id = e.builder_id WHERE e.snapshot_id = ? ORDER BY totalPoints DESC",
+          "SELECT b.id AS builderId, b.name, e.points AS totalPoints, e.rank_position AS averageRank, 1 AS entriesCount, e.prize_amount AS totalPrize, CASE WHEN e.prize_amount IS NULL THEN NULL ELSE e.is_paid END AS isPaid FROM ranking_entries e JOIN builders b ON b.id = e.builder_id WHERE e.snapshot_id = ? ORDER BY totalPoints DESC",
           [latestSnapshotId]
         );
 
@@ -502,8 +507,25 @@ export async function handleGetRankings(req: Request, res: Response): Promise<vo
       const usedBuildingIds = Array.from(new Set(latestSnapshots.map((row) => Number(row.buildingId))));
       const snapshotPlaceholders = snapshotIds.map(() => "?").join(",");
 
+      await syncSnapshotPrizeAmounts(pool, snapshotIds);
+
       const [rows] = await pool.execute<RowDataPacket[]>(
-        `SELECT b.id AS builderId, b.name, SUM(e.points) AS totalPoints, AVG(e.rank_position) AS averageRank, COUNT(*) AS entriesCount FROM ranking_entries e JOIN builders b ON b.id = e.builder_id WHERE e.snapshot_id IN (${snapshotPlaceholders}) GROUP BY b.id, b.name ORDER BY totalPoints DESC`,
+        `SELECT b.id AS builderId,
+                b.name,
+                SUM(e.points) AS totalPoints,
+                AVG(e.rank_position) AS averageRank,
+                COUNT(*) AS entriesCount,
+                SUM(e.prize_amount) AS totalPrize,
+                CASE
+                  WHEN COUNT(e.prize_amount) = 0 THEN NULL
+                  WHEN SUM(CASE WHEN e.prize_amount IS NOT NULL AND e.is_paid = 0 THEN 1 ELSE 0 END) = 0 THEN 1
+                  ELSE 0
+                END AS isPaid
+         FROM ranking_entries e
+         JOIN builders b ON b.id = e.builder_id
+         WHERE e.snapshot_id IN (${snapshotPlaceholders})
+         GROUP BY b.id, b.name
+         ORDER BY totalPoints DESC`,
         snapshotIds
       );
 
@@ -545,8 +567,25 @@ export async function handleGetRankings(req: Request, res: Response): Promise<vo
     const usedBuildingIds = Array.from(new Set(latestSnapshots.map((row) => Number(row.buildingId))));
     const placeholders = snapshotIds.map(() => "?").join(",");
 
+    await syncSnapshotPrizeAmounts(pool, snapshotIds);
+
     const [rows] = await pool.execute<RowDataPacket[]>(
-      `SELECT b.id AS builderId, b.name, SUM(e.points) AS totalPoints, AVG(e.rank_position) AS averageRank, COUNT(*) AS entriesCount FROM ranking_entries e JOIN builders b ON b.id = e.builder_id WHERE e.snapshot_id IN (${placeholders}) GROUP BY b.id, b.name ORDER BY totalPoints DESC`,
+      `SELECT b.id AS builderId,
+              b.name,
+              SUM(e.points) AS totalPoints,
+              AVG(e.rank_position) AS averageRank,
+              COUNT(*) AS entriesCount,
+              SUM(e.prize_amount) AS totalPrize,
+              CASE
+                WHEN COUNT(e.prize_amount) = 0 THEN NULL
+                WHEN SUM(CASE WHEN e.prize_amount IS NOT NULL AND e.is_paid = 0 THEN 1 ELSE 0 END) = 0 THEN 1
+                ELSE 0
+              END AS isPaid
+       FROM ranking_entries e
+       JOIN builders b ON b.id = e.builder_id
+       WHERE e.snapshot_id IN (${placeholders})
+       GROUP BY b.id, b.name
+       ORDER BY totalPoints DESC`,
       snapshotIds
     );
 
