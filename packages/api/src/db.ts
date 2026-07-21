@@ -14,6 +14,10 @@ export function createPoolFromEnv(): mysql.Pool {
     password: VER_DB_PASSWORD || "",
     database: VER_DB_NAME,
     connectionLimit: 10,
+    waitForConnections: true,
+    queueLimit: 100,
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 10000,
   });
 }
 
@@ -22,6 +26,16 @@ let pool: mysql.Pool | null = null;
 export function initPool(): mysql.Pool {
   if (!pool) {
     pool = createPoolFromEnv();
+    // Log pool events for debugging connection leaks
+    pool.on("acquire", () => {
+      console.log("[VER][DB] Connection acquired from pool");
+    });
+    pool.on("release", () => {
+      console.log("[VER][DB] Connection released back to pool");
+    });
+    pool.on("enqueue", () => {
+      console.warn("[VER][DB] Connection queued — pool may be exhausted!");
+    });
   }
   return pool;
 }
@@ -31,4 +45,11 @@ export function getPool(): mysql.Pool {
     throw new Error("Database pool not initialised. Call initPool() first.");
   }
   return pool;
+}
+
+export async function closePool(): Promise<void> {
+  if (pool) {
+    await pool.end();
+    pool = null;
+  }
 }

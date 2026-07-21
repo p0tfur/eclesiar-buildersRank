@@ -2,7 +2,7 @@ import dotenv from "dotenv";
 import path from "path";
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
-import { initPool, getPool } from "./db";
+import { initPool, getPool, closePool } from "./db";
 import { handlePostSnapshot, handleGetBuildings, handleGetRankings, handleGetBuilderHistory } from "./rankings";
 
 // Ładujemy .env z katalogu root projektu (ver/.env)
@@ -95,3 +95,17 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 app.listen(port, () => {
   console.log(`[VER] API listening on port ${port}`);
 });
+
+// Graceful shutdown — close DB pool to prevent dangling connections
+async function shutdown(signal: string) {
+  console.log(`[VER] ${signal} received, closing DB pool...`);
+  try {
+    await closePool();
+  } catch (err) {
+    console.error("[VER] Error closing pool", err);
+  }
+  process.exit(0);
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));

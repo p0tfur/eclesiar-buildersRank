@@ -220,7 +220,6 @@ export async function handlePostSnapshot(req: Request, res: Response): Promise<v
       if (existingSnapshotId !== null) {
         await conn.rollback();
         res.json({ status: "duplicate", snapshotId: existingSnapshotId });
-        conn.release();
         return;
       }
 
@@ -272,8 +271,8 @@ export async function handlePostSnapshot(req: Request, res: Response): Promise<v
         conn.release();
       } catch (err) {
         console.error("[VER] Failed to release connection", err);
-        // ignore release failure
       }
+      conn = null;
     }
   }
 }

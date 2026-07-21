@@ -435,6 +435,8 @@
 - **2026-05-07**: rozszerzono opcję `Export CSV` w widoku agregowanym o kolumnę `Prize`, eksportując tę samą sformatowaną kwotę nagrody, która jest widoczna w tabeli.
 - **2026-05-07**: dodano do komórki `Prize` w tabeli agregowanej wskaźnik statusu wypłaty oparty o `isPaid` — zielony `Check` dla opłaconej nagrody i czerwony `X` dla nieopłaconej.
 
+- **2026-07-21**: naprawiono wyciek połączeń MySQL — double-release w `handlePostSnapshot` (ścieżka duplicate snapshot wywoływała `conn.release()` a potem `finally` block wywoływał drugi raz), dodano graceful shutdown (SIGTERM/SIGINT → `closePool()`), dodano pool event listeners (acquire/release/enqueue) do debugowania, ustawiono `conn = null` po release w `finally` block.
+
 > Rozbudowa widoku **snapshotów** (oś czasu, porównania) pozostaje opcją na przyszłość, ale przy obecnym założeniu jednego snapshotu na budowę nie jest priorytetem.
 
 ---
