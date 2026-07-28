@@ -4,7 +4,7 @@ import type { FieldPacket, PoolConnection, QueryResult } from "mysql2/promise";
 // Szczegółowe logi puli (acquire/release) tylko na życzenie — inaczej zaśmiecają logi produkcyjne.
 const DB_DEBUG = process.env.VER_DB_DEBUG === "1";
 
-function envInt(name: string, fallback: number): number {
+export function envInt(name: string, fallback: number): number {
   const raw = process.env[name];
   if (!raw) return fallback;
   const parsed = parseInt(raw, 10);
@@ -86,6 +86,150 @@ export async function closePool(): Promise<void> {
   }
 }
 
+// Ile milisekund bezczynności połączenia wymusza weryfikację przez PING
+// przed użyciem go do zapytania.
+const PING_MAX_IDLE_MS = envInt("VER_DB_PING_MAX_IDLE_MS", 1000);
+
+export interface PoolStats {
+  total: number;
+  free: number;
+  queued: number;
+}
+
+interface CorePoolInternals {
+  _allConnections?: { length: number };
+  _freeConnections?: { length: number };
+  _connectionQueue?: { length: number };
+}
+
+export function getPoolStats(): PoolStats {
+  const corePool = pool ? ((pool as unknown as { pool?: CorePoolInternals }).pool ?? null) : null;
+
+  return {
+    total: corePool?._allConnections?.length ?? -1,
+    free: corePool?._freeConnections?.length ?? -1,
+    queued: corePool?._connectionQueue?.length ?? -1,
+  };
+}
+
+function formatPoolStats(): string {
+  const stats = getPoolStats();
+  return `total=${stats.total} free=${stats.free} queued=${stats.queued}`;
+}
+
+// Metadane połączeń trzymane po stronie aplikacji — pozwalają w logach
+// odróżnić awarię świeżo otwartego połączenia (problem serwera/sieci) od
+// awarii połączenia wyjętego z puli (zwietrzały socket).
+interface ConnectionInfo {
+  id: number;
+  createdAt: number;
+  lastUsedAt: number;
+  useCount: number;
+}
+
+const connectionInfos = new WeakMap<object, ConnectionInfo>();
+let connectionSeq = 0;
+
+function coreConnectionOf(conn: PoolConnection): object {
+  const core = (conn as unknown as { connection?: object }).connection;
+  return core ?? (conn as unknown as object);
+}
+
+function connectionInfoOf(conn: PoolConnection): ConnectionInfo {
+  const key = coreConnectionOf(conn);
+  let info = connectionInfos.get(key);
+
+  if (!info) {
+    connectionSeq += 1;
+    info = { id: connectionSeq, createdAt: Date.now(), lastUsedAt: Date.now(), useCount: 0 };
+    connectionInfos.set(key, info);
+  }
+
+  return info;
+}
+
+function describeConnection(conn: PoolConnection): string {
+  const info = connectionInfoOf(conn);
+  const threadId = (conn as unknown as { threadId?: number }).threadId ?? "?";
+  const ageMs = Date.now() - info.createdAt;
+  const idleMs = Date.now() - info.lastUsedAt;
+
+  return `conn#${info.id} thread=${threadId} fresh=${info.useCount === 0} age=${ageMs}ms idle=${idleMs}ms uses=${info.useCount}`;
+}
+
+/**
+ * Pobiera połączenie z puli i — jeśli leżało bezczynnie — sprawdza je PING-iem.
+ * Martwy socket jest niszczony, a próba powtarzana na innym połączeniu, więc
+ * zapytanie nigdy nie startuje na połączeniu zamkniętym po stronie serwera.
+ */
+async function acquireHealthyConnection(label: string): Promise<PoolConnection> {
+  const activePool = getPool();
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    let conn: PoolConnection;
+
+    try {
+      conn = await activePool.getConnection();
+    } catch (err) {
+      // Faza CONNECT — awaria tutaj oznacza problem z serwerem/siecią, nie z pulą.
+      console.warn(
+        `[VER][DB] connect failed before ${label} with ${errorCode(err) || "unknown"} | pool ${formatPoolStats()}`
+      );
+      throw err;
+    }
+
+    const info = connectionInfoOf(conn);
+    const idleMs = Date.now() - info.lastUsedAt;
+
+    if (info.useCount === 0 || idleMs < PING_MAX_IDLE_MS) {
+      return conn;
+    }
+
+    try {
+      await conn.ping();
+      return conn;
+    } catch (err) {
+      console.warn(
+        `[VER][DB] Dropping stale connection before ${label} (${describeConnection(conn)}): ${err instanceof Error ? err.message : err}`
+      );
+      try {
+        conn.destroy();
+      } catch (destroyErr) {
+        console.warn(`[VER][DB] Destroy failed: ${destroyErr instanceof Error ? destroyErr.message : destroyErr}`);
+      }
+    }
+  }
+
+  return activePool.getConnection();
+}
+
+/**
+ * Wykonuje operację na zweryfikowanym połączeniu i zawsze je zwalnia.
+ * Przy błędzie loguje pełny kontekst (faza, stan połączenia, stan puli).
+ */
+async function runOnConnection<T>(label: string, fn: (conn: PoolConnection) => Promise<T>): Promise<T> {
+  const conn = await acquireHealthyConnection(label);
+  const info = connectionInfoOf(conn);
+
+  try {
+    const result = await fn(conn);
+    info.useCount += 1;
+    return result;
+  } catch (err) {
+    console.warn(
+      `[VER][DB] ${label} error ${errorCode(err) || "unknown"} on ${describeConnection(conn)} | pool ${formatPoolStats()}`
+    );
+    throw err;
+  } finally {
+    info.lastUsedAt = Date.now();
+    try {
+      conn.release();
+    } catch (releaseErr) {
+      console.warn(`[VER][DB] Release failed: ${releaseErr instanceof Error ? releaseErr.message : releaseErr}`);
+    }
+  }
+}
+
 // Kody/komunikaty oznaczające, że połączenie zostało zerwane i operację można
 // bezpiecznie powtórzyć na świeżym połączeniu.
 const RETRYABLE_ERROR_CODES = new Set([
@@ -120,10 +264,18 @@ export function isRetryableDbError(err: unknown): boolean {
   return RETRYABLE_MESSAGE_PATTERN.test(message);
 }
 
-const RETRY_DELAYS_MS = [100, 500];
+// Dłuższe odstępy niż poprzednio: awaria serwera/sieci trwała ponad 3 s, a
+// wszystkie trzy próby mieściły się w 700 ms i padały razem.
+const RETRY_DELAYS_MS = [250, 750, 2000, 5000];
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Jitter rozsuwa w czasie równoległe żądania, żeby nie uderzały w serwer
+// dokładnie w tym samym momencie.
+function withJitter(delayMs: number): number {
+  return Math.round(delayMs * (0.8 + Math.random() * 0.4));
 }
 
 /**
@@ -143,9 +295,9 @@ export async function withDbRetry<T>(operation: () => Promise<T>, label = "query
         throw err;
       }
 
-      const delay = RETRY_DELAYS_MS[attempt];
+      const delay = withJitter(RETRY_DELAYS_MS[attempt]);
       console.warn(
-        `[VER][DB] ${label} failed with ${errorCode(err) || "unknown"} — retry ${attempt + 1}/${RETRY_DELAYS_MS.length} in ${delay}ms`
+        `[VER][DB] ${label} failed with ${errorCode(err) || "unknown"} — retry ${attempt + 1}/${RETRY_DELAYS_MS.length} in ${delay}ms | pool ${formatPoolStats()}`
       );
       await sleep(delay);
     }
@@ -160,45 +312,44 @@ export interface SqlExecutor {
 }
 
 /**
- * Executor zgodny API z Pool, ale odporny na PROTOCOL_CONNECTION_LOST.
+ * Executor zgodny API z Pool, ale odporny na PROTOCOL_CONNECTION_LOST:
+ * weryfikuje połączenie przed użyciem i ponawia zapytanie na innym połączeniu.
  * Używać dla zapytań odczytowych (idempotentnych) poza transakcją.
  */
 export const db: SqlExecutor = {
   execute<T extends QueryResult>(sql: string, values?: unknown[]): Promise<[T, FieldPacket[]]> {
-    return withDbRetry(() => getPool().execute<T>(sql, values ?? []), "execute");
+    return withDbRetry(() => runOnConnection("execute", (conn) => conn.execute<T>(sql, values ?? [])), "execute");
   },
   query<T extends QueryResult>(sql: string, values?: unknown[]): Promise<[T, FieldPacket[]]> {
-    return withDbRetry(() => getPool().query<T>(sql, values ?? []), "query");
+    return withDbRetry(() => runOnConnection("query", (conn) => conn.query<T>(sql, values ?? [])), "query");
   },
 };
 
 /**
- * Uruchamia callback w transakcji na dedykowanym połączeniu.
+ * Uruchamia callback w transakcji na zweryfikowanym połączeniu.
  * Przy zerwanym połączeniu cała transakcja jest powtarzana (nic nie zostało
  * zacommitowane), a połączenie zawsze wraca do puli.
  */
 export async function withTransaction<T>(fn: (conn: PoolConnection) => Promise<T>): Promise<T> {
-  return withDbRetry(async () => {
-    const conn = await getPool().getConnection();
-
-    try {
-      await conn.beginTransaction();
-      const result = await fn(conn);
-      await conn.commit();
-      return result;
-    } catch (err) {
-      try {
-        await conn.rollback();
-      } catch (rollbackErr) {
-        console.warn(`[VER][DB] Rollback failed: ${rollbackErr instanceof Error ? rollbackErr.message : rollbackErr}`);
-      }
-      throw err;
-    } finally {
-      try {
-        conn.release();
-      } catch (releaseErr) {
-        console.warn(`[VER][DB] Release failed: ${releaseErr instanceof Error ? releaseErr.message : releaseErr}`);
-      }
-    }
-  }, "transaction");
+  return withDbRetry(
+    () =>
+      runOnConnection("transaction", async (conn) => {
+        try {
+          await conn.beginTransaction();
+          const result = await fn(conn);
+          await conn.commit();
+          return result;
+        } catch (err) {
+          try {
+            await conn.rollback();
+          } catch (rollbackErr) {
+            console.warn(
+              `[VER][DB] Rollback failed: ${rollbackErr instanceof Error ? rollbackErr.message : rollbackErr}`
+            );
+          }
+          throw err;
+        }
+      }),
+    "transaction"
+  );
 }

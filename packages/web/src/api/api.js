@@ -14,49 +14,73 @@ export const ENDPOINTS = {
   SNAPSHOTS: `${API_BASE_URL}/api/rankings/snapshots`,
 };
 
-export async function getBuildings(params = {}) {
-  const url = new URL(ENDPOINTS.BUILDINGS);
+// Krótkie awarie bazy po stronie API (kilka sekund) nie powinny kończyć się
+// błędem widocznym dla użytkownika — ponawiamy tylko błędy sieci i 5xx.
+const RETRY_DELAYS_MS = [600, 1800, 4000];
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function buildUrl(baseUrl, params = {}) {
+  const url = new URL(baseUrl);
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== "") {
       url.searchParams.set(key, String(value));
     }
   });
+  return url.toString();
+}
 
-  const response = await fetch(url.toString());
-  if (!response.ok) {
-    throw new Error(`Failed to load buildings: ${response.status}`);
+async function fetchJsonWithRetry(url, options = {}, label = "request") {
+  let lastError = null;
+
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt += 1) {
+    try {
+      const response = await fetch(url, options);
+
+      if (response.ok) {
+        return response.json();
+      }
+
+      // 4xx to błąd żądania — ponawianie nic nie zmieni.
+      if (response.status < 500) {
+        throw new Error(`${label} failed: ${response.status}`);
+      }
+
+      lastError = new Error(`${label} failed: ${response.status}`);
+    } catch (err) {
+      // TypeError z fetch = błąd sieci; błąd 4xx rzucony powyżej nie ma być ponawiany.
+      if (err instanceof Error && /failed: 4\d\d$/.test(err.message)) {
+        throw err;
+      }
+      lastError = err;
+    }
+
+    if (attempt >= RETRY_DELAYS_MS.length) {
+      break;
+    }
+
+    const delay = RETRY_DELAYS_MS[attempt];
+    console.warn(`[VER] ${label} retry ${attempt + 1}/${RETRY_DELAYS_MS.length} in ${delay}ms`, lastError);
+    await sleep(delay);
   }
-  return response.json();
+
+  throw lastError || new Error(`${label} failed`);
+}
+
+export async function getBuildings(params = {}) {
+  return fetchJsonWithRetry(buildUrl(ENDPOINTS.BUILDINGS, params), {}, "Load buildings");
 }
 
 export async function getBuilderHistory(builderId, params = {}) {
-  const url = new URL(`${API_BASE_URL}/api/builders/${builderId}/history`);
-  Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== "") {
-      url.searchParams.set(key, String(value));
-    }
-  });
-
-  const response = await fetch(url.toString());
-  if (!response.ok) {
-    throw new Error(`Failed to load builder history: ${response.status}`);
-  }
-  return response.json();
+  return fetchJsonWithRetry(
+    buildUrl(`${API_BASE_URL}/api/builders/${builderId}/history`, params),
+    {},
+    "Load builder history"
+  );
 }
 
 export async function getRankings(params = {}) {
-  const url = new URL(ENDPOINTS.RANKINGS);
-  Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== "") {
-      url.searchParams.set(key, String(value));
-    }
-  });
-
-  const response = await fetch(url.toString());
-  if (!response.ok) {
-    throw new Error(`Failed to load rankings: ${response.status}`);
-  }
-  return response.json();
+  return fetchJsonWithRetry(buildUrl(ENDPOINTS.RANKINGS, params), {}, "Load rankings");
 }
 
 export async function postSnapshot(payload) {

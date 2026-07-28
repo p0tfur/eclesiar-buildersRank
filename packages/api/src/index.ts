@@ -3,6 +3,7 @@ import path from "path";
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import { initPool, db, closePool } from "./db";
+import { startDbHeartbeat, stopDbHeartbeat, getDbHealth } from "./db-health";
 import { handlePostSnapshot, handleGetBuildings, handleGetRankings, handleGetBuilderHistory } from "./rankings";
 
 // Ładujemy .env z katalogu root projektu (ver/.env)
@@ -40,14 +41,17 @@ app.use(express.json());
 // Initialize DB pool on startup
 initPool();
 
+// Heartbeat trzyma ciepłe połączenie i loguje okna niedostępności bazy.
+startDbHeartbeat();
+
 // Simple healthcheck endpoint (also verifies DB connectivity)
 app.get("/api/health", async (_req: Request, res: Response) => {
   try {
     await db.query("SELECT 1");
-    res.json({ status: "ok" });
+    res.json({ status: "ok", db: getDbHealth() });
   } catch (err) {
     console.error("[VER] Healthcheck failed", err);
-    res.status(500).json({ status: "error" });
+    res.status(500).json({ status: "error", db: getDbHealth() });
   }
 });
 
@@ -99,6 +103,7 @@ app.listen(port, () => {
 async function shutdown(signal: string) {
   console.log(`[VER] ${signal} received, closing DB pool...`);
   try {
+    stopDbHeartbeat();
     await closePool();
   } catch (err) {
     console.error("[VER] Error closing pool", err);
