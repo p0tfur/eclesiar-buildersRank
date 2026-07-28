@@ -437,6 +437,8 @@
 
 - **2026-07-21**: naprawiono wyciek połączeń MySQL — double-release w `handlePostSnapshot` (ścieżka duplicate snapshot wywoływała `conn.release()` a potem `finally` block wywoływał drugi raz), dodano graceful shutdown (SIGTERM/SIGINT → `closePool()`), dodano pool event listeners (acquire/release/enqueue) do debugowania, ustawiono `conn = null` po release w `finally` block.
 
+- **2026-07-28**: naprawiono powracające błędy `PROTOCOL_CONNECTION_LOST` (`Failed to load rankings`, `Failed to save snapshot`). Przyczyna: `mysql2` domyślnie ustawia `maxIdle = connectionLimit`, a zadanie usuwające bezczynne połączenia startuje wyłącznie gdy `maxIdle < connectionLimit` (`mysql2/lib/base/pool.js`), więc pula trzymała bezczynne połączenia bez końca i po `wait_timeout` serwera oddawała martwe socket-y (TCP keep-alive nie resetuje `wait_timeout`). Zmiany w `packages/api/src/db.ts`: `maxIdle = 2`, `idleTimeout = 30 s`, `connectTimeout`, wszystko konfigurowalne przez `VER_DB_*`; dodano `withDbRetry()` (2 ponowienia z backoff 100/500 ms dla `PROTOCOL_CONNECTION_LOST`, `ECONNRESET`, `EPIPE`, `ETIMEDOUT`, `ER_CLIENT_INTERACTION_TIMEOUT`, `ER_LOCK_DEADLOCK`), odporny executor `db` (`execute`/`query`) oraz `withTransaction()` z gwarantowanym `rollback`/`release` i powtórzeniem całej transakcji. `rankings.ts` korzysta teraz z `db` zamiast `getPool()`, `handlePostSnapshot` używa `withTransaction` (duplikaty nadal łapie `payload_hash`), `prizes.ts` przyjmuje `SqlExecutor | PoolConnection`, healthcheck idzie przez `db.query`, a logi `acquire`/`release` włącza się tylko przez `VER_DB_DEBUG=1`.
+
 > Rozbudowa widoku **snapshotów** (oś czasu, porównania) pozostaje opcją na przyszłość, ale przy obecnym założeniu jednego snapshotu na budowę nie jest priorytetem.
 
 ---

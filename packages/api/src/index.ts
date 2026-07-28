@@ -2,7 +2,7 @@ import dotenv from "dotenv";
 import path from "path";
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
-import { initPool, getPool, closePool } from "./db";
+import { initPool, db, closePool } from "./db";
 import { handlePostSnapshot, handleGetBuildings, handleGetRankings, handleGetBuilderHistory } from "./rankings";
 
 // Ładujemy .env z katalogu root projektu (ver/.env)
@@ -43,8 +43,7 @@ initPool();
 // Simple healthcheck endpoint (also verifies DB connectivity)
 app.get("/api/health", async (_req: Request, res: Response) => {
   try {
-    const pool = getPool();
-    await pool.query("SELECT 1");
+    await db.query("SELECT 1");
     res.json({ status: "ok" });
   } catch (err) {
     console.error("[VER] Healthcheck failed", err);

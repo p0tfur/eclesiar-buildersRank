@@ -1,4 +1,5 @@
-import type { Pool, PoolConnection, RowDataPacket } from "mysql2/promise";
+import type { PoolConnection, RowDataPacket } from "mysql2/promise";
+import type { SqlExecutor } from "./db";
 
 const PRIZE_RULES_START = new Date("2026-05-05T00:00:00");
 const PRIZE_POOL_BY_LEVEL: Record<number, number> = {
@@ -11,7 +12,9 @@ const PRIZE_POOL_BY_LEVEL: Record<number, number> = {
 const PRIZE_EXCLUDED_BUILDING_SLUG = "gdansk-hospital-lvl-5";
 const PRIZE_EXCLUDED_BUILDING_CREATED_AT = "2026-05-05 16:06:49";
 
-type QueryExecutor = Pool | PoolConnection;
+// Poza transakcją przychodzi tu odporny na zerwane połączenia executor z db.ts,
+// w transakcji — konkretne PoolConnection.
+type QueryExecutor = SqlExecutor | PoolConnection;
 
 interface SnapshotPrizeMeta {
   snapshotId: number;

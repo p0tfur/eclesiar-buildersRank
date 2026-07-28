@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import type { Request, Response } from "express";
 import type { PoolConnection, RowDataPacket, ResultSetHeader } from "mysql2/promise";
-import { getPool } from "./db";
+import { db, withTransaction } from "./db";
 import { syncSnapshotPrizeAmounts } from "./prizes";
 
 interface SnapshotBuildingPayload {
@@ -198,35 +198,38 @@ export async function handlePostSnapshot(req: Request, res: Response): Promise<v
     return;
   }
 
-  let conn: PoolConnection | null = null;
+  let building: NormalisedBuilding;
+  let donors: NormalisedDonor[];
+  let payloadHash: string;
 
   try {
-    const building = normaliseBuilding(payload.building);
-    const donors = normaliseDonors(payload.donors);
-    const payloadHash = computePayloadHash(building, donors);
+    building = normaliseBuilding(payload.building);
+    donors = normaliseDonors(payload.donors);
+    payloadHash = computePayloadHash(building, donors);
+  } catch (err) {
+    console.error("[VER] Invalid snapshot payload", err);
+    res.status(400).json({ status: "error", message: err instanceof Error ? err.message : "Invalid payload" });
+    return;
+  }
 
-    const apiKeyUsedHeader = req.headers["x-ver-api-key"];
-    const apiKeyUsed = apiKeyUsedHeader ? String(apiKeyUsedHeader).trim() || null : null;
+  const apiKeyUsedHeader = req.headers["x-ver-api-key"];
+  const apiKeyUsed = apiKeyUsedHeader ? String(apiKeyUsedHeader).trim() || null : null;
+  const capturedAt = payload.capturedAt ? new Date(payload.capturedAt) : new Date();
+  const source = payload.source || "eclesiar-userscript";
+  const clientUserAgent = payload.clientUserAgent || req.headers["user-agent"] || "";
+  const pageUrl = payload.pageUrl || "";
 
-    const pool = getPool();
-    conn = await pool.getConnection();
-
-    try {
-      await conn.beginTransaction();
-
+  try {
+    // Cała transakcja jest wykonywana przez withTransaction — przy zerwanym
+    // połączeniu (PROTOCOL_CONNECTION_LOST) jest bezpiecznie powtarzana,
+    // bo nic nie zostało zacommitowane, a duplikaty łapie payload_hash.
+    const result = await withTransaction(async (conn: PoolConnection) => {
       const buildingId = await ensureBuilding(conn, building);
 
       const existingSnapshotId = await findRecentSnapshotWithHash(conn, buildingId, payloadHash);
       if (existingSnapshotId !== null) {
-        await conn.rollback();
-        res.json({ status: "duplicate", snapshotId: existingSnapshotId });
-        return;
+        return { status: "duplicate" as const, snapshotId: existingSnapshotId };
       }
-
-      const capturedAt = payload.capturedAt ? new Date(payload.capturedAt) : new Date();
-      const source = payload.source || "eclesiar-userscript";
-      const clientUserAgent = payload.clientUserAgent || req.headers["user-agent"] || "";
-      const pageUrl = payload.pageUrl || "";
 
       const [snapshotResult] = await conn.execute<ResultSetHeader>(
         "INSERT INTO ranking_snapshots (building_id, captured_at, source, client_user_agent, page_url, payload_hash, api_key_used) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -248,32 +251,13 @@ export async function handlePostSnapshot(req: Request, res: Response): Promise<v
 
       await syncSnapshotPrizeAmounts(conn, [snapshotId]);
 
-      await conn.commit();
+      return { status: "ok" as const, snapshotId, insertedEntries };
+    });
 
-      res.json({ status: "ok", snapshotId, insertedEntries });
-    } catch (err) {
-      console.error("[VER] Failed to save snapshot", err);
-      if (conn) {
-        try {
-          await conn.rollback();
-        } catch {
-          console.error("[VER] Failed to rollback", err);
-        }
-      }
-      res.status(500).json({ status: "error", message: "Failed to save snapshot" });
-    }
+    res.json(result);
   } catch (err) {
     console.error("[VER] Failed to save snapshot", err);
-    res.status(400).json({ status: "error", message: err instanceof Error ? err.message : "Invalid payload" });
-  } finally {
-    if (conn) {
-      try {
-        conn.release();
-      } catch (err) {
-        console.error("[VER] Failed to release connection", err);
-      }
-      conn = null;
-    }
+    res.status(500).json({ status: "error", message: "Failed to save snapshot" });
   }
 }
 
@@ -304,10 +288,8 @@ export async function handleGetBuildings(req: Request, res: Response): Promise<v
     const fromBase = fromRaw ? new Date(fromRaw) : new Date(to.getTime() - 7 * 24 * 60 * 60 * 1000);
     const from = makeStartOfDay(fromBase);
 
-    const pool = getPool();
-
     if (!hasDateFilter) {
-      const [rows] = await pool.execute<RowDataPacket[]>(
+      const [rows] = await db.execute<RowDataPacket[]>(
         `SELECT b.id,
                 b.region,
                 b.building_type AS type,
@@ -326,7 +308,7 @@ export async function handleGetBuildings(req: Request, res: Response): Promise<v
       return;
     }
 
-    const [rows] = await pool.execute<RowDataPacket[]>(
+    const [rows] = await db.execute<RowDataPacket[]>(
       `SELECT b.id,
               b.region,
               b.building_type AS type,
@@ -346,6 +328,7 @@ export async function handleGetBuildings(req: Request, res: Response): Promise<v
     res.json({ items: rows });
     return;
   } catch (err) {
+    console.error("[VER] Failed to load buildings", err);
     res.status(500).json({ status: "error", message: "Failed to load buildings" });
   }
 }
@@ -399,15 +382,13 @@ export async function handleGetRankings(req: Request, res: Response): Promise<vo
   const limitBuildings = limitBuildingsRaw ? parseInt(limitBuildingsRaw, 10) || 0 : 0;
 
   try {
-    const pool = getPool();
-
     if (mode === "snapshot") {
       if (!hasBuildingFilter) {
         res.status(400).json({ status: "error", message: "buildingId is required for snapshot mode" });
         return;
       }
 
-      const [rows] = await pool.execute<RowDataPacket[]>(
+      const [rows] = await db.execute<RowDataPacket[]>(
         "SELECT s.id AS snapshotId, s.captured_at AS capturedAt, b.name, e.rank_position AS `rank`, e.points FROM ranking_snapshots s JOIN ranking_entries e ON e.snapshot_id = s.id JOIN builders b ON b.id = e.builder_id WHERE s.building_id = ? AND s.captured_at BETWEEN ? AND ? ORDER BY s.captured_at DESC, e.rank_position ASC",
         [buildingId, from, to]
       );
@@ -444,7 +425,7 @@ export async function handleGetRankings(req: Request, res: Response): Promise<vo
       if (targetBuildingIds.length === 1) {
         // Single building - original logic
         const singleBuildingId = targetBuildingIds[0];
-        const [latestRows] = await pool.execute<RowDataPacket[]>(
+        const [latestRows] = await db.execute<RowDataPacket[]>(
           "SELECT id, captured_at AS capturedAt FROM ranking_snapshots WHERE building_id = ? ORDER BY captured_at DESC LIMIT 1",
           [singleBuildingId]
         );
@@ -457,9 +438,9 @@ export async function handleGetRankings(req: Request, res: Response): Promise<vo
         const latestSnapshotId = Number(latestRows[0].id);
         const latestCapturedAt = latestRows[0].capturedAt as Date;
 
-        await syncSnapshotPrizeAmounts(pool, [latestSnapshotId]);
+        await syncSnapshotPrizeAmounts(db, [latestSnapshotId]);
 
-        const [rows] = await pool.execute<RowDataPacket[]>(
+        const [rows] = await db.execute<RowDataPacket[]>(
           "SELECT b.id AS builderId, b.name, e.points AS totalPoints, e.rank_position AS averageRank, 1 AS entriesCount, e.prize_amount AS totalPrize, CASE WHEN e.prize_amount IS NULL THEN NULL ELSE e.is_paid END AS isPaid FROM ranking_entries e JOIN builders b ON b.id = e.builder_id WHERE e.snapshot_id = ? ORDER BY totalPoints DESC",
           [latestSnapshotId]
         );
@@ -478,7 +459,7 @@ export async function handleGetRankings(req: Request, res: Response): Promise<vo
 
       // Multiple buildings - get latest snapshot for each selected building
       const placeholders = targetBuildingIds.map(() => "?").join(",");
-      const [latestSnapshots] = await pool.execute<RowDataPacket[]>(
+      const [latestSnapshots] = await db.execute<RowDataPacket[]>(
         `SELECT s.id AS snapshotId, s.building_id AS buildingId, s.captured_at AS capturedAt
          FROM ranking_snapshots s
          JOIN (
@@ -506,9 +487,9 @@ export async function handleGetRankings(req: Request, res: Response): Promise<vo
       const usedBuildingIds = Array.from(new Set(latestSnapshots.map((row) => Number(row.buildingId))));
       const snapshotPlaceholders = snapshotIds.map(() => "?").join(",");
 
-      await syncSnapshotPrizeAmounts(pool, snapshotIds);
+      await syncSnapshotPrizeAmounts(db, snapshotIds);
 
-      const [rows] = await pool.execute<RowDataPacket[]>(
+      const [rows] = await db.execute<RowDataPacket[]>(
         `SELECT b.id AS builderId,
                 b.name,
                 SUM(e.points) AS totalPoints,
@@ -536,7 +517,7 @@ export async function handleGetRankings(req: Request, res: Response): Promise<vo
     let latestSnapshots: RowDataPacket[];
     if (limitBuildings > 0) {
       const safeLimit = Math.max(1, Math.floor(limitBuildings));
-      const [rows] = await pool.execute<RowDataPacket[]>(
+      const [rows] = await db.execute<RowDataPacket[]>(
         `SELECT s.id AS snapshotId, s.building_id AS buildingId, s.captured_at AS capturedAt
          FROM ranking_snapshots s
          JOIN (
@@ -550,7 +531,7 @@ export async function handleGetRankings(req: Request, res: Response): Promise<vo
       );
       latestSnapshots = rows;
     } else {
-      const [rows] = await pool.execute<RowDataPacket[]>(
+      const [rows] = await db.execute<RowDataPacket[]>(
         "SELECT s.id AS snapshotId, s.building_id AS buildingId, s.captured_at AS capturedAt FROM ranking_snapshots s JOIN (SELECT building_id, MAX(captured_at) AS maxCapturedAt FROM ranking_snapshots GROUP BY building_id) t ON t.building_id = s.building_id AND t.maxCapturedAt = s.captured_at",
         []
       );
@@ -566,9 +547,9 @@ export async function handleGetRankings(req: Request, res: Response): Promise<vo
     const usedBuildingIds = Array.from(new Set(latestSnapshots.map((row) => Number(row.buildingId))));
     const placeholders = snapshotIds.map(() => "?").join(",");
 
-    await syncSnapshotPrizeAmounts(pool, snapshotIds);
+    await syncSnapshotPrizeAmounts(db, snapshotIds);
 
-    const [rows] = await pool.execute<RowDataPacket[]>(
+    const [rows] = await db.execute<RowDataPacket[]>(
       `SELECT b.id AS builderId,
               b.name,
               SUM(e.points) AS totalPoints,
@@ -630,9 +611,7 @@ export async function handleGetBuilderHistory(req: Request, res: Response): Prom
   const from = makeStartOfDay(fromBase);
 
   try {
-    const pool = getPool();
-
-    const [builderRows] = await pool.execute<RowDataPacket[]>("SELECT id, name FROM builders WHERE id = ? LIMIT 1", [
+    const [builderRows] = await db.execute<RowDataPacket[]>("SELECT id, name FROM builders WHERE id = ? LIMIT 1", [
       builderId,
     ]);
 
@@ -647,13 +626,13 @@ export async function handleGetBuilderHistory(req: Request, res: Response): Prom
 
     if (buildingId) {
       // History for a specific building
-      [rows] = await pool.execute<RowDataPacket[]>(
+      [rows] = await db.execute<RowDataPacket[]>(
         "SELECT s.id AS snapshotId, s.captured_at AS capturedAt, e.points, e.rank_position AS `rank`, b.id AS buildingId, b.region AS buildingRegion, b.building_type AS buildingType, b.level AS buildingLevel FROM ranking_entries e JOIN ranking_snapshots s ON s.id = e.snapshot_id JOIN buildings b ON b.id = s.building_id WHERE e.builder_id = ? AND s.building_id = ? AND s.captured_at BETWEEN ? AND ? ORDER BY s.captured_at ASC",
         [builderId, buildingId, from, to]
       );
     } else {
       // History for all buildings where the player participated in the given period
-      [rows] = await pool.execute<RowDataPacket[]>(
+      [rows] = await db.execute<RowDataPacket[]>(
         "SELECT s.id AS snapshotId, s.captured_at AS capturedAt, e.points, e.rank_position AS `rank`, b.id AS buildingId, b.region AS buildingRegion, b.building_type AS buildingType, b.level AS buildingLevel FROM ranking_entries e JOIN ranking_snapshots s ON s.id = e.snapshot_id JOIN buildings b ON b.id = s.building_id WHERE e.builder_id = ? AND s.captured_at BETWEEN ? AND ? ORDER BY s.captured_at ASC, b.region ASC, b.building_type ASC, b.level ASC",
         [builderId, from, to]
       );
@@ -679,6 +658,7 @@ export async function handleGetBuilderHistory(req: Request, res: Response): Prom
       points: enrichedRows,
     });
   } catch (err) {
+    console.error("[VER] Failed to load builder history", err);
     res.status(500).json({ status: "error", message: "Failed to load builder history" });
   }
 }
